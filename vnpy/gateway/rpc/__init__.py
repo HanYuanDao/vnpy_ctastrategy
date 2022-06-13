@@ -1,0 +1,1 @@
+from vnpy_rpcservice import RpcGateway
