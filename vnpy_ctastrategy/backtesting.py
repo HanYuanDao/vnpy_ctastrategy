@@ -11,9 +11,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from vnpy.trader.constant import (Direction, Offset, Exchange,
-                                  Interval, Status)
+                                  Interval, Status, ProfitLoss)
 from vnpy.trader.database import get_database
-from vnpy.trader.object import OrderData, TradeData, BarData, TickData
+from vnpy.trader.object import OrderData, TradeData, TradePairData, BarData, TickData
 from vnpy.trader.utility import round_to
 from vnpy.trader.optimize import (
     OptimizationSetting,
@@ -423,7 +423,7 @@ class BacktestingEngine:
         trade_round_win_num = 0
         trade_pairs = self.generate_trade_pairs()
         for tp in trade_pairs:
-            if tp["profit_round"]:
+            if tp.profit_round == ProfitLoss.PROFIT:
                 trade_round_win_num += 1
             trade_round_total_num += 1
         success_rate = trade_round_win_num / trade_round_total_num
@@ -1010,21 +1010,40 @@ class BacktestingEngine:
                 open_trade = opposite_direction[0]
 
                 close_volume = min(open_trade.volume, trade.volume)
-                profit_round = False
+                profit_round = ProfitLoss.LOSS
                 if (trade.direction == Direction.LONG and open_trade.price < trade.price) \
                         or (trade.direction == Direction.SHORT and open_trade.price > trade.price):
-                    profit_round = True
-                d = {
-                    "open_dt": open_trade.datetime,
-                    "open_price": open_trade.price,
-                    "close_dt": trade.datetime,
-                    "close_price": trade.price,
-                    "profit_round": profit_round,
-                    "direction": open_trade.direction,
-                    "volume": close_volume,
-                    "trade_memo_open": open_trade.trade_memo,
-                    "trade_memo_close": trade.trade_memo,
-                }
+                    profit_round = ProfitLoss.PROFIT
+
+                if (trade.direction == Direction.LONG):
+                    profit_loss = (trade.price - open_trade.price) * close_volume
+                else:
+                    profit_loss = (open_trade.price - trade.price) * close_volume
+
+                d = TradePairData(
+                    open_dt=open_trade.datetime,
+                    open_price=open_trade.price,
+                    close_dt=trade.datetime,
+                    close_price=trade.price,
+                    direction=open_trade.direction,
+                    volume=close_volume,
+                    profit_loss=profit_loss,
+                    profit_round=profit_round,
+                    trade_memo_open=open_trade.trade_memo,
+                    trade_memo_close=trade.trade_memo,
+                    gateway_name=self.gateway_name
+                )
+                # d = {
+                #     "open_dt": open_trade.datetime,
+                #     "open_price": open_trade.price,
+                #     "close_dt": trade.datetime,
+                #     "close_price": trade.price,
+                #     "profit_round": profit_round,
+                #     "direction": open_trade.direction,
+                #     "volume": close_volume,
+                #     "trade_memo_open": open_trade.trade_memo,
+                #     "trade_memo_close": trade.trade_memo,
+                # }
                 trade_pairs.append(d)
 
                 open_trade.volume -= close_volume
