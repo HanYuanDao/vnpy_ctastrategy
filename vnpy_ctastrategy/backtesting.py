@@ -1010,15 +1010,15 @@ class BacktestingEngine:
                 open_trade = opposite_direction[0]
 
                 close_volume = min(open_trade.volume, trade.volume)
-                profit_round = ProfitLoss.LOSS
-                if (trade.direction == Direction.LONG and open_trade.price < trade.price) \
-                        or (trade.direction == Direction.SHORT and open_trade.price > trade.price):
-                    profit_round = ProfitLoss.PROFIT
 
                 if (trade.direction == Direction.LONG):
-                    profit_loss = (trade.price - open_trade.price) * close_volume
-                else:
                     profit_loss = (open_trade.price - trade.price) * close_volume
+                else:
+                    profit_loss = (trade.price - open_trade.price) * close_volume
+
+                profit_round = ProfitLoss.LOSS
+                if profit_loss > 0:
+                    profit_round = ProfitLoss.PROFIT
 
                 d = TradePairData(
                     open_dt=open_trade.datetime,
