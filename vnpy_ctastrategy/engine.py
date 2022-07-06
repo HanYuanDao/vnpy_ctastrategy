@@ -94,6 +94,8 @@ class CtaEngine(BaseEngine):
         self.stop_order_count = 0   # for generating stop_orderid
         self.stop_orders = {}       # stop_orderid: stop_order
 
+        self.trade_intentions = {}  # 输入交易意图
+
         self.init_executor = ThreadPoolExecutor(max_workers=1)
 
         self.rq_client = None
@@ -439,6 +441,9 @@ class CtaEngine(BaseEngine):
 
         return [stop_orderid]
 
+    def get_all_trade_intentions(self):
+        return list(self.trade_intentions.values())
+
     def cancel_server_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
         Cancel existing order by vt_orderid.
@@ -472,6 +477,13 @@ class CtaEngine(BaseEngine):
 
         self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
         self.put_stop_order_event(stop_order)
+
+    def add_trade_intention(self, dt: datetime, memo: str):
+        ti = {
+            "dt": dt,
+            "memo": memo
+        }
+        self.trade_intentions[dt] = ti
 
     def send_order(
         self,
