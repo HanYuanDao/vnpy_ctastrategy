@@ -1,4 +1,5 @@
 """"""
+import abc
 from abc import ABC
 from copy import copy
 from typing import Any, Callable
@@ -345,6 +346,157 @@ class CtaTemplate(ABC):
         """
         if self.trading:
             self.cta_engine.sync_strategy_data(self)
+
+
+class XinXiCtaTemplate(CtaTemplate):
+    # 声明作者
+    author = "Xin Qi Technical Corporation"
+
+    def __init__(self):
+        self.tick_now = None
+        self.tick_pre = None
+        self.strategy_trade_state = 0
+
+    def on_tick(self, tick: TickData):
+        self.tick_now = tick
+
+        # 去除非交易时间的数据
+        if self.tick_now.datetime.hour <= 8 or 16 < self.tick_now.datetime.hour < 21:
+            return
+
+        if self.tick_now.tradDay != self.tick_pre.tradDay:
+            self.reset_tmp_variable()
+
+        self.handle_trade_process()
+
+        self.tick_pre = self.tick_now
+
+    def force_close4normal(self):
+        if self.strategy_trade_state != 91 and self.strategy_trade_state != 92 and self.strategy_trade_state != 93:
+            self.write_log("量化程序转为休眠状态")
+            self.write_log("量化程序开始强制平仓")
+            self.strategy_trade_state = 91
+        self.cancel_all()
+        if self.pos > 0:
+            self.write_log("量化程序开始空方向强制平仓")
+            if self.const_close_round_mode == 1:
+                self.short(self.tick_now.bid_price_1, abs(self.pos),
+                           lock=True,
+                           memo="休眠多方向平仓")
+            else:
+                self.sell(self.tick_now.bid_price_1, abs(self.pos),
+                          lock=True,
+                          memo="休眠多方向平仓")
+        elif self.pos < 0:
+            self.write_log("量化程序开始多方向强制平仓")
+            if self.const_close_round_mode == 1:
+                self.buy(self.tick_now.ask_price_1, abs(self.pos),
+                         lock=True,
+                         memo="休眠多方向平仓")
+            else:
+                self.cover(self.tick_now.ask_price_1, abs(self.pos),
+                           lock=True,
+                           memo="休眠多方向平仓")
+        else:
+            if self.strategy_trade_state == 92:
+                self.strategy_trade_state = 93
+                self.write_log("再次校验强制平仓时已无多余持仓")
+            else:
+                self.strategy_trade_state = 92
+                self.write_log("初次校验强制平仓时已无多余持仓")
+
+    def handle_trade_process(self):
+        self.force_close4normal()
+
+        self.build_quot_parameter()
+
+        self.handle_trade_strategy()
+
+    @abc.abstractmethod
+    def handle_trade_strategy(self):
+        pass
+
+    def on_trade(self, order: OrderData):
+        self.build_order_parameter(order)
+        self.put_event()
+
+    def on_order(self, trade: TradeData):
+        self.build_trade_parameter(trade)
+        self.put_event()
+
+    @abc.abstractmethod
+    def build_quot_parameter(self):
+        """ 处理行情参数
+
+        Returns:
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def build_order_parameter(self, order: OrderData):
+        """ 当报单成功时处理回调信息
+
+        Args:
+            order:
+
+        Returns:
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def build_trade_parameter(self, trade: TradeData):
+        """ 当订单成交时处理回调信息
+
+        Args:
+            trade:
+
+        Returns:
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def start_strategy(self):
+        pass
+
+    @abc.abstractmethod
+    def stop_strategy(self):
+        pass
+
+    @abc.abstractmethod
+    def open(self):
+        pass
+
+    @abc.abstractmethod
+    def close4stop_loss(self):
+        pass
+
+    @abc.abstractmethod
+    def close4stop_profit(self):
+        pass
+
+    @abc.abstractmethod
+    def insert_order4open(self):
+        pass
+
+    @abc.abstractmethod
+    def insert_order4stop_loss(self):
+        pass
+
+    @abc.abstractmethod
+    def insert_order4stop_profit(self):
+        pass
+
+    @abc.abstractmethod
+    def reset_tmp_variable(self):
+        """ 处理跨交易日时需要重置的参数
+
+        Returns:
+
+        """
+        pass
 
 
 class CtaSignal(ABC):
