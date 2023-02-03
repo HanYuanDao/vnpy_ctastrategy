@@ -348,7 +348,7 @@ class CtaTemplate(ABC):
             self.cta_engine.sync_strategy_data(self)
 
 
-class XinXiCtaTemplate(CtaTemplate):
+class XinQiCtaTemplate(CtaTemplate):
     # 声明作者
     author = "Xin Qi Technical Corporation"
 
