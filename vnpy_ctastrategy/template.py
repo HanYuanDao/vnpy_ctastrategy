@@ -380,7 +380,8 @@ class XinQiCtaTemplate(CtaTemplate):
         if self.tick_now.datetime.hour <= 8 or 16 < self.tick_now.datetime.hour < 21:
             return
 
-        if self.tick_now.tradDay != self.tick_pre.tradDay:
+        if self.tick_pre is not None \
+                and self.tick_now.tradDay != self.tick_pre.tradDay:
             self.reset_tmp_variable()
 
         self.handle_trade_process()
