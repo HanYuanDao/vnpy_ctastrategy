@@ -352,9 +352,25 @@ class XinQiCtaTemplate(CtaTemplate):
     # 声明作者
     author = "Xin Qi Technical Corporation"
 
-    def __init__(self):
-        self.tick_now = None
-        self.tick_pre = None
+    def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
+        super().__init__(cta_engine, strategy_name, vt_symbol, setting)
+
+        # 当前tick
+        self.tick_now: TickData = None
+        # 前一个tick
+        self.tick_pre: TickData = None
+
+        # 记录开仓时的交易对象
+        self.trade_date_open: TradeData = None
+        # 策略交易的状态
+        # 0：不进行任何活动
+        # 1：开始开仓
+        # 5：已持仓
+        # 10：开始止损
+        # 20：开始止盈
+        # 91: 转为休眠
+        # 92: 首次清理持仓
+        # 93: 确认持仓清理完毕
         self.strategy_trade_state = 0
 
     def on_tick(self, tick: TickData):
@@ -377,26 +393,8 @@ class XinQiCtaTemplate(CtaTemplate):
             self.write_log("量化程序开始强制平仓")
             self.strategy_trade_state = 91
         self.cancel_all()
-        if self.pos > 0:
-            self.write_log("量化程序开始空方向强制平仓")
-            if self.const_close_round_mode == 1:
-                self.short(self.tick_now.bid_price_1, abs(self.pos),
-                           lock=True,
-                           memo="休眠多方向平仓")
-            else:
-                self.sell(self.tick_now.bid_price_1, abs(self.pos),
-                          lock=True,
-                          memo="休眠多方向平仓")
-        elif self.pos < 0:
-            self.write_log("量化程序开始多方向强制平仓")
-            if self.const_close_round_mode == 1:
-                self.buy(self.tick_now.ask_price_1, abs(self.pos),
-                         lock=True,
-                         memo="休眠多方向平仓")
-            else:
-                self.cover(self.tick_now.ask_price_1, abs(self.pos),
-                           lock=True,
-                           memo="休眠多方向平仓")
+        if self.pos != 0:
+            self.insert_order4force_close(trade_memo="force close when close")
         else:
             if self.strategy_trade_state == 92:
                 self.strategy_trade_state = 93
@@ -410,17 +408,49 @@ class XinQiCtaTemplate(CtaTemplate):
 
         self.build_quot_parameter()
 
-        self.handle_trade_strategy()
+        if self.is_running_logic():
+            self.handle_trade_strategy()
 
-    @abc.abstractmethod
     def handle_trade_strategy(self):
-        pass
+        if self.strategy_trade_state == 0 or self.strategy_trade_state == 1 or self.strategy_trade_state == 93:
+            self.open()
+        elif self.strategy_trade_state == 5:
+            self.close4stop_profit()
+            self.close4stop_loss()
+        elif self.strategy_trade_state == 10:
+            self.close4stop_loss()
+        elif self.strategy_trade_state == 20:
+            self.close4stop_profit()
 
-    def on_trade(self, order: OrderData):
+        """
+        在此处应该要添加分析交易状态是否准确的方法
+        以供从统计上判断策略对于行情走势判断的准确程度
+        """
+
+        if self.strategy_trade_state == 1:
+            self.insert_order4open()
+        elif self.strategy_trade_state == 10:
+            self.insert_order4stop_loss()
+        elif self.strategy_trade_state == 20:
+            self.insert_order4stop_profit()
+
+    def on_order(self, order: OrderData):
         self.build_order_parameter(order)
         self.put_event()
 
-    def on_order(self, trade: TradeData):
+    def on_trade(self, trade: TradeData):
+        if self.strategy_trade_state == 1:
+            self.trade_date_open = trade
+            self.strategy_trade_state == 5
+        elif self.strategy_trade_state == 10:
+            self.strategy_trade_state = 0
+        elif self.strategy_trade_state == 20:
+            self.strategy_trade_state = 0
+        elif self.strategy_trade_state == 5:
+            self.insert_order4force_close(trade_memo="state error")
+        else:
+            self.write_log("func 'on_order' get an error strategy_trade_state" + str(self.strategy_trade_state))
+
         self.build_trade_parameter(trade)
         self.put_event()
 
@@ -458,11 +488,7 @@ class XinQiCtaTemplate(CtaTemplate):
         pass
 
     @abc.abstractmethod
-    def start_strategy(self):
-        pass
-
-    @abc.abstractmethod
-    def stop_strategy(self):
+    def is_running_logic(self):
         pass
 
     @abc.abstractmethod
@@ -489,6 +515,13 @@ class XinQiCtaTemplate(CtaTemplate):
     def insert_order4stop_profit(self):
         pass
 
+    def insert_order4force_close(self, trade_memo: str):
+        self.insert_order(self.const_flag_close_mode.__eq__(self.const_close_round_mode),
+                          self.pos < 0,
+                          abs(self.pos),
+                          self.tick_now.ask_price_1 if self.pos < 0 else self.tick_now.bid_price_1,
+                          trade_memo)
+
     @abc.abstractmethod
     def reset_tmp_variable(self):
         """ 处理跨交易日时需要重置的参数
@@ -497,6 +530,18 @@ class XinQiCtaTemplate(CtaTemplate):
 
         """
         pass
+
+    def insert_order(self, is_lock: bool, is_long: bool, volume: int, price: float, trade_memo: str):
+        if is_lock:
+            if is_long:
+                self.buy(price, volume, lock=True, memo=trade_memo)
+            else:
+                self.cover(price, volume, lock=True, memo=trade_memo)
+        else:
+            if is_long:
+                self.buy(price, volume, net=True, memo=trade_memo)
+            else:
+                self.cover(price, volume, net=True, memo=trade_memo)
 
 
 class CtaSignal(ABC):
