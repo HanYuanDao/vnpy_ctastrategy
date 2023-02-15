@@ -426,7 +426,10 @@ class BacktestingEngine:
             if tp.profit_round == ProfitLoss.PROFIT:
                 trade_round_win_num += 1
             trade_round_total_num += 1
-        success_rate = trade_round_win_num / trade_round_total_num
+        if trade_round_total_num != 0:
+            success_rate = trade_round_win_num / trade_round_total_num
+        else:
+            success_rate = 0
 
         # Output
         if output:

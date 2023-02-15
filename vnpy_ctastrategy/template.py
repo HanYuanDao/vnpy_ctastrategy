@@ -352,6 +352,9 @@ class XinQiCtaTemplate(CtaTemplate):
     # 声明作者
     author = "Xin Qi Technical Corporation"
 
+    const_flag_close_mode = "lock"
+    const_flag_insert_order_finish: bool = True
+
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         super().__init__(cta_engine, strategy_name, vt_symbol, setting)
 
@@ -382,6 +385,7 @@ class XinQiCtaTemplate(CtaTemplate):
 
         if self.tick_pre is not None \
                 and self.tick_now.tradDay != self.tick_pre.tradDay:
+            self.strategy_trade_state = 0
             self.reset_tmp_variable()
 
         self.handle_trade_process()
@@ -405,7 +409,8 @@ class XinQiCtaTemplate(CtaTemplate):
                 self.write_log("初次校验强制平仓时已无多余持仓")
 
     def handle_trade_process(self):
-        self.force_close4normal()
+        if self.is_sleep_time():
+            self.force_close4normal()
 
         self.build_quot_parameter()
 
@@ -428,18 +433,21 @@ class XinQiCtaTemplate(CtaTemplate):
         以供从统计上判断策略对于行情走势判断的准确程度
         """
 
-        if self.strategy_trade_state == 1:
-            self.insert_order4open()
-        elif self.strategy_trade_state == 10:
-            self.insert_order4stop_loss()
-        elif self.strategy_trade_state == 20:
-            self.insert_order4stop_profit()
+        if self.const_flag_insert_order_finish is True:
+            if self.strategy_trade_state == 1:
+                self.insert_order4open()
+            elif self.strategy_trade_state == 10:
+                self.insert_order4stop_loss()
+            elif self.strategy_trade_state == 20:
+                self.insert_order4stop_profit()
 
     def on_order(self, order: OrderData):
+        self.const_flag_insert_order_finish = False
         self.build_order_parameter(order)
         self.put_event()
 
     def on_trade(self, trade: TradeData):
+        self.const_flag_insert_order_finish = True
         if self.strategy_trade_state == 1:
             self.trade_date_open = trade
             self.strategy_trade_state == 5
@@ -531,6 +539,17 @@ class XinQiCtaTemplate(CtaTemplate):
 
         """
         pass
+
+    def is_sleep_time(self):
+        if (self.tick_now.datetime.hour == 14
+            and self.tick_now.datetime.minute == 59
+            and self.tick_now.datetime.second >= 55) \
+                or (self.tick_now.datetime.hour == 22
+                    and self.tick_now.datetime.minute == 59
+                    and self.tick_now.datetime.second >= 55):
+            return True
+        else:
+            return False
 
     def insert_order(self, is_lock: bool, is_long: bool, volume: int, price: float, trade_memo: str):
         if is_lock:
