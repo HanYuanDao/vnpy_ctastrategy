@@ -22,14 +22,15 @@ class TheBollTacticOfND(CtaTemplate):
 
     const_boll_window = 20
     const_boll_dev = 2
-    const_volume = 1
+
+    const_jeton = 10000
     const_num_trend = 15
     const_boll_mid_price_range = 1.005
     const_loss_thr = 0.015
     const_profit_thr = 0.04
     const_close_round_mode = "lock"
     parameters = [
-        "const_volume",
+        "const_jeton",
         "const_num_trend",
         "const_boll_mid_price_range",
         "const_loss_thr",
@@ -108,28 +109,29 @@ class TheBollTacticOfND(CtaTemplate):
 
         if self.pos == 0 and abs(self.num_trend) >= self.const_num_trend \
                 and abs(self.tick_now.last_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
+            volume = self.const_jeton / self.tick_now.last_price
             if self.num_trend > 0:
                 self.trade_direction = 1
                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
                     self.buy(self.get_highest_price(self.tick_now),
-                             self.const_volume,
+                             volume,
                              lock=True,
                              memo=self.strategy_trade_memo)
                 else:
                     self.buy(self.get_highest_price(self.tick_now),
-                             self.const_volume,
+                             volume,
                              net=True,
                              memo=self.strategy_trade_memo)
             else:
                 self.trade_direction = 2
                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
                     self.short(self.get_lowest_price(self.tick_now),
-                               self.const_volume,
+                               volume,
                                lock=True,
                                memo=self.strategy_trade_memo)
                 else:
                     self.short(self.get_lowest_price(self.tick_now),
-                               self.const_volume,
+                               volume,
                                net=True,
                                memo=self.strategy_trade_memo)
 
