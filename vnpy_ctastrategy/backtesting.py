@@ -618,16 +618,21 @@ class BacktestingEngine:
     def new_tick(self, tick: TickData):
         """"""
         if self.tick and (self.tick.datetime.minute != tick.datetime.minute):
-            self.output("新的一分钟" + tick.datetime.strftime('%Y-%m-%d %h:%m:%s'))
+            self.output("新的一分钟" + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
 
         self.tick = tick
         self.datetime = tick.datetime
 
+        self.output("1")
         self.cross_limit_order()
+        self.output("2")
         self.cross_stop_order()
+        self.output("3")
         self.strategy.on_tick(tick)
+        self.output("4")
 
         self.update_daily_close(tick.last_price)
+        self.output("5")
 
     def cross_limit_order(self):
         """
