@@ -623,16 +623,16 @@ class BacktestingEngine:
         self.tick = tick
         self.datetime = tick.datetime
 
-        self.output("1")
+        self.output("1" + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.cross_limit_order()
-        self.output("2")
+        self.output("2" + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.cross_stop_order()
-        self.output("3")
+        self.output("3" + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.strategy.on_tick(tick)
-        self.output("4")
+        self.output("4" + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
 
         self.update_daily_close(tick.last_price)
-        self.output("5")
+        self.output("5" + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
 
     def cross_limit_order(self):
         """
