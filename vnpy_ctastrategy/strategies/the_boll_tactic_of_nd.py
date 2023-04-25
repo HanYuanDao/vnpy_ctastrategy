@@ -12,6 +12,7 @@ from vnpy_ctastrategy import (
     # K线时间序列管理模块
     ArrayManager
 )
+from datetime import datetime
 
 
 class TheBollTacticOfND(CtaTemplate):
@@ -136,7 +137,9 @@ class TheBollTacticOfND(CtaTemplate):
                                memo=self.strategy_trade_memo)
 
     def on_tick(self, tick: TickData):
+        # print(f"{datetime.now()}\t开始on_tick")
         self.bg.update_tick(tick)
+        # print(f"{datetime.now()}\t结束bg.update_tick")
         self.tick_now = tick
 
         # if self.tick_now.datetime.month == 2 \
@@ -198,6 +201,7 @@ class TheBollTacticOfND(CtaTemplate):
                                        abs(self.pos),
                                        net=True,
                                        memo=self.strategy_trade_memo)
+        # print(f"{datetime.now()}\t结束on_tick")
 
     def on_bar(self, bar: BarData):
         self.bg.update_bar(bar)
