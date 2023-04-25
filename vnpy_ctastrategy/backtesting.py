@@ -649,7 +649,7 @@ class BacktestingEngine:
             long_best_price = self.tick.last_price
             short_best_price = self.tick.last_price
 
-        len = str(len(self.active_limit_orders.values()))
+        length_activate_limit_orders = str(len(self.active_limit_orders.values()))
         self.output("1-1 " + len)
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
@@ -673,7 +673,7 @@ class BacktestingEngine:
             if not long_cross and not short_cross:
                 continue
 
-            self.output("1-2 " + len)
+            self.output("1-2 " + length_activate_limit_orders)
 
             # Push order udpate with status "all traded" (filled).
             order.traded = order.volume
