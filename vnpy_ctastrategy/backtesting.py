@@ -617,6 +617,9 @@ class BacktestingEngine:
 
     def new_tick(self, tick: TickData):
         """"""
+        if self.tick and (self.tick.datetime.minute != tick.datetime.minute):
+            self.output("新的一分钟" + tick.datetime.strftime('%Y-%m-%d %h:%m:%s'))
+
         self.tick = tick
         self.datetime = tick.datetime
 
