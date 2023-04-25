@@ -623,7 +623,7 @@ class BacktestingEngine:
         self.tick = tick
         self.datetime = tick.datetime
 
-        self.output("1 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
+        self.output("1 " + tick.symbol + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.cross_limit_order()
         self.output("2 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.cross_stop_order()
