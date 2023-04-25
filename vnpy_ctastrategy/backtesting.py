@@ -650,7 +650,7 @@ class BacktestingEngine:
             short_best_price = self.tick.last_price
 
         length_activate_limit_orders = str(len(self.active_limit_orders.values()))
-        self.output("1-1 " + len)
+        self.output("1-1 " + length_activate_limit_orders)
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
             if order.status == Status.SUBMITTING:
