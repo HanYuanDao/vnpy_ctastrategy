@@ -256,12 +256,14 @@ class BacktestingEngine:
         for ix, i in enumerate(range(0, total_size, batch_size)):
             batch_data = backtesting_data[i: i + batch_size]
             for data in batch_data:
+                self.output("开始轮询batch_data")
                 try:
                     func(data)
                 except Exception:
                     self.output("触发异常，回测终止")
                     self.output(traceback.format_exc())
                     return
+                self.output("结束轮询batch_data")
 
             progress = min(ix / 10, 1)
             progress_bar = "=" * (ix + 1)

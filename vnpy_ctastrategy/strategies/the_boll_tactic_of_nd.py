@@ -136,9 +136,9 @@ class TheBollTacticOfND(CtaTemplate):
                                memo=self.strategy_trade_memo)
 
     def on_tick(self, tick: TickData):
-        print("开始on_tick")
+        self.output("开始on_tick")
         self.bg.update_tick(tick)
-        print("结束bg.update_tick")
+        self.output("结束bg.update_tick")
         self.tick_now = tick
 
         # if self.tick_now.datetime.month == 2 \
@@ -200,7 +200,7 @@ class TheBollTacticOfND(CtaTemplate):
                                        abs(self.pos),
                                        net=True,
                                        memo=self.strategy_trade_memo)
-        print("结束on_tick")
+        self.output("结束on_tick")
 
     def on_bar(self, bar: BarData):
         self.bg.update_bar(bar)
