@@ -59,7 +59,7 @@ class BacktestingEngine:
 
         self.strategy_class = None
         self.strategy = None
-        self.tick: TickData
+        self.tick: TickData = None
         self.bar: BarData
         self.datetime = None
 
