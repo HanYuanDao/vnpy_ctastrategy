@@ -617,22 +617,22 @@ class BacktestingEngine:
 
     def new_tick(self, tick: TickData):
         """"""
-        if self.tick and (self.tick.datetime.minute != tick.datetime.minute):
-            self.output("新的一分钟 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
+        # if self.tick and (self.tick.datetime.minute != tick.datetime.minute):
+        #     self.output("新的一分钟 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
 
         self.tick = tick
         self.datetime = tick.datetime
 
-        self.output("1 " + tick.symbol + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
+        # self.output("1 " + tick.symbol + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.cross_limit_order()
-        self.output("2 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
+        # self.output("2 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.cross_stop_order()
-        self.output("3 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
+        # self.output("3 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
         self.strategy.on_tick(tick)
-        self.output("4 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
+        # self.output("4 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
 
         self.update_daily_close(tick.last_price)
-        self.output("5 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
+        # self.output("5 " + tick.datetime.strftime('%Y-%m-%d %H:%M:%S.%f'))
 
     def cross_limit_order(self):
         """
@@ -650,7 +650,7 @@ class BacktestingEngine:
             short_best_price = self.tick.last_price
 
         length_activate_limit_orders = str(len(self.active_limit_orders.values()))
-        self.output("1-1 " + length_activate_limit_orders)
+        # self.output("1-1 " + length_activate_limit_orders)
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
             if order.status == Status.SUBMITTING:
@@ -673,13 +673,13 @@ class BacktestingEngine:
             if not long_cross and not short_cross:
                 continue
 
-            self.output("1-2 " + length_activate_limit_orders)
+            # self.output("1-2 " + length_activate_limit_orders)
 
             # Push order udpate with status "all traded" (filled).
             order.traded = order.volume
             order.status = Status.ALLTRADED
             self.strategy.on_order(order)
-            self.output("1-3 ")
+            # self.output("1-3 ")
             if order.vt_orderid in self.active_limit_orders:
                 self.active_limit_orders.pop(order.vt_orderid)
 
@@ -692,7 +692,7 @@ class BacktestingEngine:
             else:
                 trade_price = max(order.price, short_best_price)
                 pos_change = -order.volume
-            self.output("1-4 ")
+            # self.output("1-4 ")
             trade = TradeData(
                 symbol=order.symbol,
                 exchange=order.exchange,
@@ -706,13 +706,13 @@ class BacktestingEngine:
                 gateway_name=self.gateway_name,
                 trade_memo=order.memo,
             )
-            self.output("1-5 ")
+            # self.output("1-5 ")
 
             self.strategy.pos += pos_change
             self.strategy.on_trade(trade)
 
             self.trades[trade.vt_tradeid] = trade
-            self.output("1-6 ")
+            # self.output("1-6 ")
 
     def cross_stop_order(self):
         """
