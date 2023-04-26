@@ -24,7 +24,7 @@ class TheBollTacticOfND(CtaTemplate):
     const_boll_window = 20
     const_boll_dev = 2
 
-    const_jeton = 10000
+    const_jeton = 500000
     const_k_level = 15
     const_num_trend = 15
     const_boll_mid_price_range = 0.005
