@@ -103,9 +103,9 @@ class TheBollTacticOfND(CtaTemplate):
         self.boll_up, self.boll_down = am.boll(self.const_boll_window, self.const_boll_dev)
 
         self.boll_mid = (self.boll_up + self.boll_down) / 2
-        if self.num_trend < 0 and bar.high_price < self.boll_mid:
+        if self.num_trend <= 0 and bar.high_price < self.boll_mid:
             self.num_trend -= 1
-        elif self.num_trend > 0 and bar.low_price > self.boll_mid:
+        elif self.num_trend >= 0 and bar.low_price > self.boll_mid:
             self.num_trend += 1
         else:
             self.num_trend = 0
