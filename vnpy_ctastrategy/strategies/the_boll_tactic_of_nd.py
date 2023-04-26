@@ -25,13 +25,15 @@ class TheBollTacticOfND(CtaTemplate):
     const_boll_dev = 2
 
     const_jeton = 10000
+    const_k_level = 15
     const_num_trend = 15
-    const_boll_mid_price_range = 1.005
+    const_boll_mid_price_range = 0.005
     const_loss_thr = 0.015
     const_profit_thr = 0.04
     const_close_round_mode = "lock"
     parameters = [
         "const_jeton",
+        "const_k_level",
         "const_num_trend",
         "const_boll_mid_price_range",
         "const_loss_thr",
@@ -71,7 +73,7 @@ class TheBollTacticOfND(CtaTemplate):
         super(TheBollTacticOfND, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
 
         # 调用K线生成模块 从tick数据合成分钟k线
-        self.bg = BarGenerator(self.on_bar, 15, self.on_15min_bar)
+        self.bg = BarGenerator(self.on_bar, self.const_k_level, self.on_15min_bar)
 
         # 调用K线时间序列管理模块
         self.am = ArrayManager(self.const_boll_window)
@@ -101,9 +103,9 @@ class TheBollTacticOfND(CtaTemplate):
         self.boll_up, self.boll_down = am.boll(self.const_boll_window, self.const_boll_dev)
 
         self.boll_mid = (self.boll_up + self.boll_down) / 2
-        if bar.high_price < self.boll_mid:
+        if self.num_trend < 0 and bar.high_price < self.boll_mid:
             self.num_trend -= 1
-        elif bar.low_price > self.boll_mid:
+        elif self.num_trend > 0 and bar.low_price > self.boll_mid:
             self.num_trend += 1
         else:
             self.num_trend = 0
