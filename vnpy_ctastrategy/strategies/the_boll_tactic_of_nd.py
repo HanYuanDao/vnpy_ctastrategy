@@ -222,6 +222,6 @@ class TheBollTacticOfND(CtaTemplate):
         self.strategy_trade_memo = ""
 
     def get_highest_price(self, tick: TickData):
-        return tick.limit_down
-    def get_lowest_price(self, tick: TickData):
         return tick.limit_up
+    def get_lowest_price(self, tick: TickData):
+        return tick.limit_down
