@@ -299,6 +299,9 @@ class CtaTemplate(ABC):
         """
         return self.cta_engine.get_pricetick(self)
 
+    def get_symbol_size(self):
+        return self.cta_engine.get_symbol_size(self)
+
     def load_bar(
         self,
         days: int,

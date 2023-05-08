@@ -976,6 +976,9 @@ class BacktestingEngine:
         """
         return self.pricetick
 
+    def get_symbol_size(self, strategy: CtaTemplate):
+        return self.size
+
     def put_strategy_event(self, strategy: CtaTemplate):
         """
         Put an event to update strategy status.
