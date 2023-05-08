@@ -94,56 +94,6 @@ class TheBollTacticOfND(CtaTemplate):
     def on_stop(self):
         self.write_log("策略停止")
 
-    def on_15min_bar(self, bar: BarData):
-        am = self.am
-        am.update_bar(bar)
-        if not am.inited:
-            return
-
-        self.boll_up, self.boll_down = am.boll(self.const_boll_window, self.const_boll_dev)
-
-        self.boll_mid = (self.boll_up + self.boll_down) / 2
-        if self.num_trend <= 0 and bar.high_price < self.boll_mid:
-            self.num_trend -= 1
-        elif self.num_trend >= 0 and bar.low_price > self.boll_mid:
-            self.num_trend += 1
-        else:
-            self.num_trend = 0
-
-        if self.pos == 0 and abs(self.num_trend) >= self.const_num_trend \
-                and abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
-            volume = int(self.const_jeton / self.bar_now.close_price / self.get_symbol_size())
-            if self.num_trend > 0:
-                self.trade_direction = 1
-                if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                    self.buy(self.get_highest_price(self.bar_now),
-                             volume,
-                             lock=True,
-                             memo=self.strategy_trade_memo)
-                else:
-                    self.buy(self.get_highest_price(self.bar_now),
-                             volume,
-                             net=True,
-                             memo=self.strategy_trade_memo)
-            else:
-                self.trade_direction = 2
-                if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                    self.short(self.get_lowest_price(self.bar_now),
-                               volume,
-                               lock=True,
-                               memo=self.strategy_trade_memo)
-                else:
-                    self.short(self.get_lowest_price(self.bar_now),
-                               volume,
-                               net=True,
-                               memo=self.strategy_trade_memo)
-
-    def on_tick(self, tick: TickData):
-        # print(f"{datetime.now()}\t开始on_tick")
-        # self.bg.update_tick(tick)
-        # print(f"{datetime.now()}\t结束bg.update_tick")
-        pass
-
     def on_bar(self, bar: BarData):
         self.bg.update_bar(bar)
 
@@ -208,6 +158,56 @@ class TheBollTacticOfND(CtaTemplate):
                                        net=True,
                                        memo=self.strategy_trade_memo)
         # print(f"{datetime.now()}\t结束on_tick")
+
+    def on_15min_bar(self, bar: BarData):
+        am = self.am
+        am.update_bar(bar)
+        if not am.inited:
+            return
+
+        self.boll_up, self.boll_down = am.boll(self.const_boll_window, self.const_boll_dev)
+
+        self.boll_mid = (self.boll_up + self.boll_down) / 2
+        if self.num_trend <= 0 and bar.high_price < self.boll_mid:
+            self.num_trend -= 1
+        elif self.num_trend >= 0 and bar.low_price > self.boll_mid:
+            self.num_trend += 1
+        else:
+            self.num_trend = 0
+
+        if self.pos == 0 and abs(self.num_trend) >= self.const_num_trend \
+                and abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
+            volume = int(self.const_jeton / self.bar_now.close_price / self.get_symbol_size())
+            if self.num_trend > 0:
+                self.trade_direction = 1
+                if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                    self.buy(self.get_highest_price(self.bar_now),
+                             volume,
+                             lock=True,
+                             memo=self.strategy_trade_memo)
+                else:
+                    self.buy(self.get_highest_price(self.bar_now),
+                             volume,
+                             net=True,
+                             memo=self.strategy_trade_memo)
+            else:
+                self.trade_direction = 2
+                if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                    self.short(self.get_lowest_price(self.bar_now),
+                               volume,
+                               lock=True,
+                               memo=self.strategy_trade_memo)
+                else:
+                    self.short(self.get_lowest_price(self.bar_now),
+                               volume,
+                               net=True,
+                               memo=self.strategy_trade_memo)
+
+    def on_tick(self, tick: TickData):
+        # print(f"{datetime.now()}\t开始on_tick")
+        # self.bg.update_tick(tick)
+        # print(f"{datetime.now()}\t结束bg.update_tick")
+        pass
 
     def on_order(self, order: OrderData):
         pass
