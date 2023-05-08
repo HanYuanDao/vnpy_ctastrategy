@@ -1043,6 +1043,7 @@ class BacktestingEngine:
                     profit_round = ProfitLoss.PROFIT
 
                 d = TradePairData(
+                    symbol=trade.symbol,
                     open_dt=open_trade.datetime,
                     open_price=open_trade.price,
                     close_dt=trade.datetime,
