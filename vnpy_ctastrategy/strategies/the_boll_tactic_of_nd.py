@@ -112,7 +112,7 @@ class TheBollTacticOfND(CtaTemplate):
 
         if self.pos == 0 and abs(self.num_trend) >= self.const_num_trend \
                 and abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
-            volume = self.const_jeton / self.bar_now.close_price
+            volume = self.const_jeton / self.bar_now.close_price / self.get_symbol_size()
             if self.num_trend > 0:
                 self.trade_direction = 1
                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
