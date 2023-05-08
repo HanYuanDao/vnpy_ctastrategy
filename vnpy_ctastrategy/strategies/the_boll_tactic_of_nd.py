@@ -12,6 +12,7 @@ from vnpy_ctastrategy import (
     # K线时间序列管理模块
     ArrayManager
 )
+from datetime import datetime
 
 
 class TheBollTacticOfND(CtaTemplate):
@@ -24,13 +25,15 @@ class TheBollTacticOfND(CtaTemplate):
     const_boll_dev = 2
 
     const_jeton = 10000
+    const_k_level = 15
     const_num_trend = 15
-    const_boll_mid_price_range = 1.005
+    const_boll_mid_price_range = 0.005
     const_loss_thr = 0.015
     const_profit_thr = 0.04
     const_close_round_mode = "lock"
     parameters = [
         "const_jeton",
+        "const_k_level",
         "const_num_trend",
         "const_boll_mid_price_range",
         "const_loss_thr",
@@ -38,7 +41,7 @@ class TheBollTacticOfND(CtaTemplate):
         "const_close_round_mode",
     ]
 
-    tick_now: TickData = None
+    bar_now: BarData = None
     # 当前回合开仓的价格
     open_price = 0.0
     num_trend = 0
@@ -58,7 +61,7 @@ class TheBollTacticOfND(CtaTemplate):
     strategy_trade_state = 0
     strategy_trade_memo = ''
     variables = [
-        "tick_now",
+        "bar_now",
         "num_trend",
         "trade_direction",
         "strategy_trade_state",
@@ -70,7 +73,7 @@ class TheBollTacticOfND(CtaTemplate):
         super(TheBollTacticOfND, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
 
         # 调用K线生成模块 从tick数据合成分钟k线
-        self.bg = BarGenerator(self.on_bar, 15, self.on_15min_bar)
+        self.bg = BarGenerator(self.on_bar, self.const_k_level, self.on_15min_bar)
 
         # 调用K线时间序列管理模块
         self.am = ArrayManager(self.const_boll_window)
@@ -100,52 +103,58 @@ class TheBollTacticOfND(CtaTemplate):
         self.boll_up, self.boll_down = am.boll(self.const_boll_window, self.const_boll_dev)
 
         self.boll_mid = (self.boll_up + self.boll_down) / 2
-        if bar.high_price < self.boll_mid:
+        if self.num_trend <= 0 and bar.high_price < self.boll_mid:
             self.num_trend -= 1
-        elif bar.low_price > self.boll_mid:
+        elif self.num_trend >= 0 and bar.low_price > self.boll_mid:
             self.num_trend += 1
         else:
             self.num_trend = 0
 
         if self.pos == 0 and abs(self.num_trend) >= self.const_num_trend \
-                and abs(self.tick_now.last_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
-            volume = self.const_jeton / self.tick_now.last_price
+                and abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
+            volume = self.const_jeton / self.bar_now.close_price
             if self.num_trend > 0:
                 self.trade_direction = 1
                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                    self.buy(self.get_highest_price(self.tick_now),
+                    self.buy(self.get_highest_price(self.bar_now),
                              volume,
                              lock=True,
                              memo=self.strategy_trade_memo)
                 else:
-                    self.buy(self.get_highest_price(self.tick_now),
+                    self.buy(self.get_highest_price(self.bar_now),
                              volume,
                              net=True,
                              memo=self.strategy_trade_memo)
             else:
                 self.trade_direction = 2
                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                    self.short(self.get_lowest_price(self.tick_now),
+                    self.short(self.get_lowest_price(self.bar_now),
                                volume,
                                lock=True,
                                memo=self.strategy_trade_memo)
                 else:
-                    self.short(self.get_lowest_price(self.tick_now),
+                    self.short(self.get_lowest_price(self.bar_now),
                                volume,
                                net=True,
                                memo=self.strategy_trade_memo)
 
     def on_tick(self, tick: TickData):
-        self.tick_now = tick
-        self.bg.update_tick(tick)
+        # print(f"{datetime.now()}\t开始on_tick")
+        # self.bg.update_tick(tick)
+        # print(f"{datetime.now()}\t结束bg.update_tick")
+        pass
 
+    def on_bar(self, bar: BarData):
+        self.bg.update_bar(bar)
+
+        self.bar_now = bar
         # if self.tick_now.datetime.month == 2 \
         #     and self.tick_now.datetime.day == 1 \
         #     and self.tick_now.datetime.hour == 13 \
         #     and self.tick_now.datetime.minute == 30:
 
         if self.pos != 0:
-            diff = self.tick_now.last_price - self.open_price
+            diff = self.bar_now.close_price - self.open_price
 
             if (self.trade_direction == 1 and diff < 0) \
                     or (self.trade_direction == 2 and diff > 0):
@@ -153,23 +162,23 @@ class TheBollTacticOfND(CtaTemplate):
                 if abs(diff) > self.open_price * self.const_loss_thr:
                     if self.trade_direction == 1:
                         if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                            self.short(self.get_lowest_price(self.tick_now),
+                            self.short(self.get_lowest_price(self.bar_now),
                                        abs(self.pos),
                                        lock=True,
                                        memo=self.strategy_trade_memo)
                         else:
-                            self.sell(self.get_lowest_price(self.tick_now),
+                            self.sell(self.get_lowest_price(self.bar_now),
                                       abs(self.pos),
                                       net=True,
                                       memo=self.strategy_trade_memo)
                     else:
                         if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                            self.buy(self.get_highest_price(self.tick_now),
+                            self.buy(self.get_highest_price(self.bar_now),
                                      abs(self.pos),
                                      lock=True,
                                      memo=self.strategy_trade_memo)
                         else:
-                            self.cover(self.get_highest_price(self.tick_now),
+                            self.cover(self.get_highest_price(self.bar_now),
                                        abs(self.pos),
                                        net=True,
                                        memo=self.strategy_trade_memo)
@@ -178,29 +187,27 @@ class TheBollTacticOfND(CtaTemplate):
                 if abs(diff) > self.open_price * self.const_profit_thr:
                     if self.trade_direction == 1:
                         if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                            self.short(self.get_lowest_price(self.tick_now),
+                            self.short(self.get_lowest_price(self.bar_now),
                                        abs(self.pos),
                                        lock=True,
                                        memo=self.strategy_trade_memo)
                         else:
-                            self.sell(self.get_lowest_price(self.tick_now),
+                            self.sell(self.get_lowest_price(self.bar_now),
                                       abs(self.pos),
                                       net=True,
                                       memo=self.strategy_trade_memo)
                     else:
                         if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                            self.buy(self.get_highest_price(self.tick_now),
+                            self.buy(self.get_highest_price(self.bar_now),
                                      abs(self.pos),
                                      lock=True,
                                      memo=self.strategy_trade_memo)
                         else:
-                            self.cover(self.get_highest_price(self.tick_now),
+                            self.cover(self.get_highest_price(self.bar_now),
                                        abs(self.pos),
                                        net=True,
                                        memo=self.strategy_trade_memo)
-
-    def on_bar(self, bar: BarData):
-        self.bg.update_bar(bar)
+        # print(f"{datetime.now()}\t结束on_tick")
 
     def on_order(self, order: OrderData):
         pass
@@ -210,7 +217,7 @@ class TheBollTacticOfND(CtaTemplate):
         pass
 
     def reset_tmp_variable(self):
-        self.tick_now: TickData = None
+        self.bar_now: BarData = None
         self.open_price = 0.0
         self.num_trend = 0
         self.trade_direction = 0
@@ -218,6 +225,13 @@ class TheBollTacticOfND(CtaTemplate):
         self.strategy_trade_memo = ""
 
     def get_highest_price(self, tick: TickData):
-        return tick.limit_down
-    def get_lowest_price(self, tick: TickData):
         return tick.limit_up
+
+    def get_highest_price(self, bar: BarData):
+        return bar.high_price
+
+    def get_lowest_price(self, tick: TickData):
+        return tick.limit_down
+
+    def get_lowest_price(self, bar: BarData):
+        return bar.low_price
