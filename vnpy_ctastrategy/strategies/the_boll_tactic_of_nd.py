@@ -26,12 +26,14 @@ class TheBollTacticOfND(CtaTemplate):
 
     const_jeton = 1000000
     const_k_level = 15
-    const_num_trend = 15
+    const_num_trend = 14
     const_boll_mid_price_range = 0.005
     const_loss_thr = 0.015
     const_profit_thr = 0.04
     const_close_round_mode = "lock"
     parameters = [
+        "const_boll_window",
+        "const_boll_dev",
         "const_jeton",
         "const_k_level",
         "const_num_trend",
@@ -157,6 +159,34 @@ class TheBollTacticOfND(CtaTemplate):
                                        abs(self.pos),
                                        net=True,
                                        memo=self.strategy_trade_memo)
+        else:
+            if abs(self.num_trend) >= self.const_num_trend \
+                    and abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
+                volume = int(self.const_jeton / self.bar_now.close_price / self.get_symbol_size())
+                if self.num_trend > 0:
+                    self.trade_direction = 1
+                    if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                        self.buy(self.get_highest_price(self.bar_now),
+                                 volume,
+                                 lock=True,
+                                 memo=self.strategy_trade_memo)
+                    else:
+                        self.buy(self.get_highest_price(self.bar_now),
+                                 volume,
+                                 net=True,
+                                 memo=self.strategy_trade_memo)
+                else:
+                    self.trade_direction = 2
+                    if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                        self.short(self.get_lowest_price(self.bar_now),
+                                   volume,
+                                   lock=True,
+                                   memo=self.strategy_trade_memo)
+                    else:
+                        self.short(self.get_lowest_price(self.bar_now),
+                                   volume,
+                                   net=True,
+                                   memo=self.strategy_trade_memo)
         # print(f"{datetime.now()}\t结束on_tick")
 
     def on_15min_bar(self, bar: BarData):
@@ -175,33 +205,6 @@ class TheBollTacticOfND(CtaTemplate):
         else:
             self.num_trend = 0
 
-        if self.pos == 0 and abs(self.num_trend) >= self.const_num_trend \
-                and abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
-            volume = int(self.const_jeton / self.bar_now.close_price / self.get_symbol_size())
-            if self.num_trend > 0:
-                self.trade_direction = 1
-                if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                    self.buy(self.get_highest_price(self.bar_now),
-                             volume,
-                             lock=True,
-                             memo=self.strategy_trade_memo)
-                else:
-                    self.buy(self.get_highest_price(self.bar_now),
-                             volume,
-                             net=True,
-                             memo=self.strategy_trade_memo)
-            else:
-                self.trade_direction = 2
-                if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                    self.short(self.get_lowest_price(self.bar_now),
-                               volume,
-                               lock=True,
-                               memo=self.strategy_trade_memo)
-                else:
-                    self.short(self.get_lowest_price(self.bar_now),
-                               volume,
-                               net=True,
-                               memo=self.strategy_trade_memo)
 
     def on_tick(self, tick: TickData):
         # print(f"{datetime.now()}\t开始on_tick")
@@ -228,10 +231,11 @@ class TheBollTacticOfND(CtaTemplate):
         return tick.limit_up
 
     def get_highest_price(self, bar: BarData):
-        return bar.high_price
+        return bar.upper_limit_price
 
     def get_lowest_price(self, tick: TickData):
         return tick.limit_down
 
     def get_lowest_price(self, bar: BarData):
-        return bar.low_price
+        return bar.lower_limit_price
+
