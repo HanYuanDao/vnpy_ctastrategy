@@ -205,7 +205,6 @@ class TheBollTacticOfND(CtaTemplate):
         else:
             self.num_trend = 0
 
-
     def on_tick(self, tick: TickData):
         # print(f"{datetime.now()}\t开始on_tick")
         # self.bg.update_tick(tick)
