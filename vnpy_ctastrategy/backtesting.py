@@ -308,6 +308,7 @@ class BacktestingEngine:
         results = defaultdict(list)
 
         for daily_result in self.daily_results.values():
+            results['symbol'] = self.symbol
             for key, value in daily_result.__dict__.items():
                 results[key].append(value)
 
