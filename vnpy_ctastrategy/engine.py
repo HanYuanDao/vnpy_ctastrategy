@@ -564,6 +564,14 @@ class CtaEngine(BaseEngine):
         else:
             return None
 
+    def get_symbol_margin(self, strategy: CtaTemplate):
+        contract = self.main_engine.get_contract(strategy.vt_symbol)
+
+        if contract:
+            return contract.size
+        else:
+            return None
+
     def load_bar(
         self,
         vt_symbol: str,

@@ -302,6 +302,9 @@ class CtaTemplate(ABC):
     def get_symbol_size(self):
         return self.cta_engine.get_symbol_size(self)
 
+    def get_symbol_margin(self):
+        return self.cta_engine.get_symbol_margin(self)
+
     def load_bar(
         self,
         days: int,

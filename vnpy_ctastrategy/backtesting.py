@@ -124,7 +124,8 @@ class BacktestingEngine:
         mode: BacktestingMode = BacktestingMode.BAR,
         inverse: bool = False,
         risk_free: float = 0,
-        annual_days: int = 240
+        annual_days: int = 240,
+        margin_ratio: float = 0,
     ):
         """"""
         self.mode = mode
@@ -146,6 +147,7 @@ class BacktestingEngine:
         self.inverse = inverse
         self.risk_free = risk_free
         self.annual_days = annual_days
+        self.margin_ratio = margin_ratio
 
     def add_strategy(self, strategy_class: type, setting: dict):
         """"""
@@ -979,6 +981,9 @@ class BacktestingEngine:
 
     def get_symbol_size(self, strategy: CtaTemplate):
         return self.size
+
+    def get_symbol_margin(self, strategy: CtaTemplate):
+        return self.margin_ratio
 
     def put_strategy_event(self, strategy: CtaTemplate):
         """
