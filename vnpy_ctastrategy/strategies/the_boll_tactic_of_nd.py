@@ -13,6 +13,7 @@ from vnpy_ctastrategy import (
     ArrayManager
 )
 from datetime import datetime
+from collections import deque
 
 
 class TheBollTacticOfND(CtaTemplate):
@@ -31,6 +32,10 @@ class TheBollTacticOfND(CtaTemplate):
     const_loss_thr = 0.015
     const_profit_thr = 0.04
     const_close_round_mode = "lock"
+    const_deque_size = 1200
+    const_diff_ratio = 1.02
+    const_highest_price_queue: deque
+    const_lowest_price_queue: deque
     parameters = [
         "const_boll_window",
         "const_boll_dev",
@@ -41,6 +46,8 @@ class TheBollTacticOfND(CtaTemplate):
         "const_loss_thr",
         "const_profit_thr",
         "const_close_round_mode",
+        "const_deque_size",
+        "const_diff_ratio",
     ]
 
     bar_now: BarData = None
@@ -80,6 +87,9 @@ class TheBollTacticOfND(CtaTemplate):
         # 调用K线时间序列管理模块
         self.am = ArrayManager(self.const_boll_window)
 
+        self.const_highest_price_queue = deque(maxlen=self.const_deque_size)
+        self.const_lowest_price_queue = deque(maxlen=self.const_deque_size)
+
     def on_init(self):
         self.write_log("策略初始化")
 
@@ -104,6 +114,13 @@ class TheBollTacticOfND(CtaTemplate):
         #     and self.tick_now.datetime.day == 1 \
         #     and self.tick_now.datetime.hour == 13 \
         #     and self.tick_now.datetime.minute == 30:
+
+        self.const_highest_price_queue.append(bar.high_price)
+        self.const_lowest_price_queue.append(bar.low_price)
+
+        if len(self.const_highest_price_queue) < self.const_deque_size or \
+                len(self.const_lowest_price_queue) < self.const_deque_size:
+            return
 
         if self.pos != 0:
             diff = self.bar_now.close_price - self.open_price
@@ -160,9 +177,11 @@ class TheBollTacticOfND(CtaTemplate):
                                        net=True,
                                        memo=self.strategy_trade_memo)
         else:
-            if abs(self.num_trend) >= self.const_num_trend \
-                    and abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
-                volume = int(self.const_jeton / self.get_symbol_margin() / self.bar_now.close_price / self.get_symbol_size())
+            if abs(self.num_trend) >= self.const_num_trend and \
+                    abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range and \
+                    max(self.const_highest_price_queue) >= min(self.const_lowest_price_queue) * self.const_diff_ratio:
+                volume = int(self.const_jeton / self.get_symbol_margin()
+                             / self.bar_now.close_price / self.get_symbol_size())
                 if self.num_trend > 0:
                     self.trade_direction = 1
                     if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
@@ -225,6 +244,9 @@ class TheBollTacticOfND(CtaTemplate):
         self.trade_direction = 0
         self.strategy_trade_state = 0
         self.strategy_trade_memo = ""
+
+        self.const_highest_price_queue = deque(maxlen=self.const_deque_size)
+        self.const_lowest_price_queue = deque(maxlen=self.const_deque_size)
 
     def get_highest_price(self, tick: TickData):
         return tick.limit_up

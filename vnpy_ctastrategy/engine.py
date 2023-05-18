@@ -568,7 +568,7 @@ class CtaEngine(BaseEngine):
         contract = self.main_engine.get_contract(strategy.vt_symbol)
 
         if contract:
-            return contract.size
+            return (contract.long_margin_ratio + contract.short_margin_ratio) / 2
         else:
             return None
 
