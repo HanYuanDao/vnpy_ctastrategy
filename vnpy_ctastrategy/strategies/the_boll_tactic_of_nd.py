@@ -73,7 +73,7 @@ class TheBollTacticOfND(CtaTemplate):
     variables = [
         "tick_now",
         "bar_now",
-        "open_price"
+        "open_price",
         "num_trend",
         "trade_direction",
         "strategy_trade_state",
