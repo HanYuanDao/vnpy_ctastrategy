@@ -224,6 +224,8 @@ class TheBollTacticOfND(CtaTemplate):
 
     def on_tick(self, tick: TickData):
         self.tick_now = tick
+        # 将tick数据推送给bg以使其生成k线
+        self.bg.update_tick(tick)
 
         if len(self.const_highest_price_queue) < self.const_deque_size or \
                 len(self.const_lowest_price_queue) < self.const_deque_size:
