@@ -118,6 +118,7 @@ class TheBollTacticOfND(CtaTemplate):
         self.const_highest_price_queue.append(bar.high_price)
         self.const_lowest_price_queue.append(bar.low_price)
 
+
         # if len(self.const_highest_price_queue) < self.const_deque_size or \
         #         len(self.const_lowest_price_queue) < self.const_deque_size:
         #     return
