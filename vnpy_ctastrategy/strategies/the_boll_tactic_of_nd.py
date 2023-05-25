@@ -301,8 +301,8 @@ class TheBollTacticOfND(CtaTemplate):
             if abs(self.num_trend) >= self.const_num_trend and \
                     abs(self.tick_now.last_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range and \
                     max(self.const_highest_price_queue) >= min(self.const_lowest_price_queue) * self.const_diff_ratio:
-            # if abs(self.num_trend) >= self.const_num_trend and \
-            #         abs(self.tick_now.last_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
+                # if abs(self.num_trend) >= self.const_num_trend and \
+                #         abs(self.tick_now.last_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
                 volume = int(self.const_jeton / self.get_symbol_margin()
                              / self.tick_now.last_price / self.get_symbol_size())
                 if self.is_insert_order is False:
@@ -368,5 +368,3 @@ class TheBollTacticOfND(CtaTemplate):
 
     def get_lowest_price_bar(self, bar: BarData):
         return bar.lower_limit_price
-
-
