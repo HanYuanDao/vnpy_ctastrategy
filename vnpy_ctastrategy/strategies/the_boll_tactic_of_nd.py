@@ -44,13 +44,25 @@ class TheBollTacticOfND(CtaTemplate):
         "const_k_level",
         "const_num_trend",
         "const_boll_mid_price_range",
+        "const_diff_ratio",
         "const_loss_thr",
         "const_profit_thr",
         "const_close_round_mode",
         "const_deque_size",
-        "const_diff_ratio",
     ]
 
+    variables = [
+        "open_price",
+        "num_trend",
+        "xxx_boll_mid_price_range",
+        "xxx_diff_ratio",
+        "xxx_loss_thr",
+        "xxx_profit_thr",
+        "trade_direction",
+        "strategy_trade_state",
+        "strategy_trade_memo",
+        "is_insert_order"
+    ]
     # 当前回合开仓的价格
     open_price = 0.0
     num_trend = 0
@@ -70,14 +82,10 @@ class TheBollTacticOfND(CtaTemplate):
     strategy_trade_state = 0
     strategy_trade_memo = ''
     is_insert_order = False
-    variables = [
-        "open_price",
-        "num_trend",
-        "trade_direction",
-        "strategy_trade_state",
-        "strategy_trade_memo",
-        "is_insert_order"
-    ]
+    xxx_boll_mid_price_range = 0
+    xxx_diff_ratio = 0
+    xxx_loss_thr = 0
+    xxx_profit_thr = 0
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
@@ -241,7 +249,8 @@ class TheBollTacticOfND(CtaTemplate):
             if (self.trade_direction == 1 and diff < 0) \
                     or (self.trade_direction == 2 and diff > 0):
                 # 止损判断
-                if abs(diff) > self.open_price * self.const_loss_thr:
+                self.xxx_loss_thr = abs(diff) / self.open_price
+                if self.xxx_loss_thr > self.const_loss_thr:
                     if self.is_insert_order is False:
                         self.is_insert_order = True
 
@@ -269,7 +278,8 @@ class TheBollTacticOfND(CtaTemplate):
                                            memo=self.strategy_trade_memo)
             else:
                 # 止盈判断
-                if abs(diff) > self.open_price * self.const_profit_thr:
+                self.xxx_profit_thr = abs(diff) > self.open_price
+                if self.xxx_profit_thr > self.const_profit_thr:
                     if self.is_insert_order is False:
                         self.is_insert_order = True
 
@@ -299,40 +309,45 @@ class TheBollTacticOfND(CtaTemplate):
             if self.tick_now.datetime.day > 15:
                 return
 
-            if abs(self.num_trend) >= self.const_num_trend and \
-                    abs(self.tick_now.last_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range and \
-                    max(self.const_highest_price_queue) >= min(self.const_lowest_price_queue) * self.const_diff_ratio:
-                # if abs(self.num_trend) >= self.const_num_trend and \
-                #         abs(self.tick_now.last_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range:
-                volume = int(self.const_jeton / self.get_symbol_margin()
-                             / self.tick_now.last_price / self.get_symbol_size())
-                if self.is_insert_order is False:
-                    self.is_insert_order = True
+            if (abs(self.num_trend) >= self.const_num_trend) is False:
+                return
 
-                    if self.num_trend > 0:
-                        self.trade_direction = 1
-                        if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                            self.buy(self.get_highest_price_tick(self.tick_now),
-                                     volume,
-                                     lock=True,
-                                     memo=self.strategy_trade_memo)
-                        else:
-                            self.buy(self.get_highest_price_tick(self.tick_now),
-                                     volume,
-                                     net=True,
-                                     memo=self.strategy_trade_memo)
+            self.xxx_boll_mid_price_range = abs(self.tick_now.last_price - self.boll_mid) / self.boll_mid
+            if (self.xxx_boll_mid_price_range < self.const_boll_mid_price_range) is False:
+                return
+
+            self.xxx_diff_ratio = max(self.const_highest_price_queue) / min(self.const_lowest_price_queue)
+            if (self.xxx_diff_ratio >= self.const_diff_ratio) is False:
+                return
+
+            volume = int(self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size())
+            if self.is_insert_order is False:
+                self.is_insert_order = True
+
+                if self.num_trend > 0:
+                    self.trade_direction = 1
+                    if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                        self.buy(self.get_highest_price_tick(self.tick_now),
+                                 volume,
+                                 lock=True,
+                                 memo=self.strategy_trade_memo)
                     else:
-                        self.trade_direction = 2
-                        if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-                            self.short(self.get_lowest_price_tick(self.tick_now),
-                                       volume,
-                                       lock=True,
-                                       memo=self.strategy_trade_memo)
-                        else:
-                            self.short(self.get_lowest_price_tick(self.tick_now),
-                                       volume,
-                                       net=True,
-                                       memo=self.strategy_trade_memo)
+                        self.buy(self.get_highest_price_tick(self.tick_now),
+                                 volume,
+                                 net=True,
+                                 memo=self.strategy_trade_memo)
+                else:
+                    self.trade_direction = 2
+                    if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                        self.short(self.get_lowest_price_tick(self.tick_now),
+                                   volume,
+                                   lock=True,
+                                   memo=self.strategy_trade_memo)
+                    else:
+                        self.short(self.get_lowest_price_tick(self.tick_now),
+                                   volume,
+                                   net=True,
+                                   memo=self.strategy_trade_memo)
 
     def on_order(self, order: OrderData):
         if order.status.__eq__(Status.ALLTRADED) \
