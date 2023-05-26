@@ -69,12 +69,14 @@ class TheBollTacticOfND(CtaTemplate):
     # 93: 确认持仓清理完毕
     strategy_trade_state = 0
     strategy_trade_memo = ''
+    is_insert_order = False
     variables = [
         "open_price",
         "num_trend",
         "trade_direction",
         "strategy_trade_state",
-        "strategy_trade_memo"
+        "strategy_trade_memo",
+        "is_insert_order"
     ]
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
@@ -92,7 +94,6 @@ class TheBollTacticOfND(CtaTemplate):
 
         self.tick_now: TickData = None
         self.bar_now: BarData = None
-        self.is_insert_order = False
 
     def on_init(self):
         self.write_log("策略初始化")
@@ -100,7 +101,7 @@ class TheBollTacticOfND(CtaTemplate):
         self.reset_tmp_variable()
 
         # # 加载历史数据回测 加载10天
-        self.load_bar(5)
+        self.load_bar(8)
         # # 加载tick数据回测 加载30天
         # self.load_tick(0)
 
@@ -117,7 +118,6 @@ class TheBollTacticOfND(CtaTemplate):
 
         self.const_highest_price_queue.append(bar.high_price)
         self.const_lowest_price_queue.append(bar.low_price)
-
 
         # if len(self.const_highest_price_queue) < self.const_deque_size or \
         #         len(self.const_lowest_price_queue) < self.const_deque_size:
