@@ -306,8 +306,8 @@ class TheBollTacticOfND(CtaTemplate):
                                            net=True,
                                            memo=self.strategy_trade_memo)
         else:
-            if self.tick_now.datetime.day > 15:
-                return
+            # if self.tick_now.datetime.day > 15:
+            #     return
 
             if (abs(self.num_trend) >= self.const_num_trend) is False:
                 return
