@@ -51,18 +51,6 @@ class TheBollTacticOfND(CtaTemplate):
         "const_deque_size",
     ]
 
-    variables = [
-        "open_price",
-        "num_trend",
-        "xxx_boll_mid_price_range",
-        "xxx_diff_ratio",
-        "xxx_loss_thr",
-        "xxx_profit_thr",
-        "trade_direction",
-        "strategy_trade_state",
-        "strategy_trade_memo",
-        "is_insert_order"
-    ]
     # 当前回合开仓的价格
     open_price = 0.0
     num_trend = 0
@@ -86,6 +74,18 @@ class TheBollTacticOfND(CtaTemplate):
     xxx_diff_ratio = 0
     xxx_loss_thr = 0
     xxx_profit_thr = 0
+    variables = [
+        "open_price",
+        "num_trend",
+        "xxx_boll_mid_price_range",
+        "xxx_diff_ratio",
+        "xxx_loss_thr",
+        "xxx_profit_thr",
+        "trade_direction",
+        "strategy_trade_state",
+        "strategy_trade_memo",
+        "is_insert_order"
+    ]
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
