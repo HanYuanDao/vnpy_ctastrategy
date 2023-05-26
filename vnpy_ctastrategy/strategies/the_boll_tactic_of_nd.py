@@ -373,6 +373,11 @@ class TheBollTacticOfND(CtaTemplate):
 
         self.is_insert_order = False
 
+        self.xxx_boll_mid_price_range = 0
+        self.xxx_diff_ratio = 0
+        self.xxx_loss_thr = 0
+        self.xxx_profit_thr = 0
+
     def get_highest_price_tick(self, tick: TickData):
         return tick.limit_up
 
