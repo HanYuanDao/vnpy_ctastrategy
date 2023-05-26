@@ -717,9 +717,10 @@ class CtaEngine(BaseEngine):
         data = self.strategy_data.get(strategy_name, None)
         if data:
             for name in strategy.variables:
-                value = data.get(name, None)
-                if value is not None:
-                    setattr(strategy, name, value)
+                if "xxx" not in name:
+                    value = data.get(name, None)
+                    if value is not None:
+                        setattr(strategy, name, value)
 
         # Subscribe market data
         contract = self.main_engine.get_contract(strategy.vt_symbol)
