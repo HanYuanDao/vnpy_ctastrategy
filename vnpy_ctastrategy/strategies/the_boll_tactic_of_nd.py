@@ -114,6 +114,7 @@ class TheBollTacticOfND(CtaTemplate):
         # self.load_tick(0)
 
     def on_start(self):
+        self.is_insert_order = False
         self.write_log("策略启动")
 
     def on_stop(self):
