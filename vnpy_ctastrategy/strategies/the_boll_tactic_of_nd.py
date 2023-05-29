@@ -252,9 +252,10 @@ class TheBollTacticOfND(CtaTemplate):
                 # 止损判断
                 self.xxx_loss_thr = abs(diff) / self.open_price
                 if self.xxx_loss_thr > self.const_loss_thr:
-                    if self.is_insert_order is False:
+                    if self.is_insert_order.__eq__(False):
                         self.is_insert_order = True
 
+                        self.strategy_trade_memo = "self.xxx_loss_thr-" + str(self.xxx_loss_thr)
                         if self.trade_direction == 1:
                             if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
                                 self.short(self.get_lowest_price_tick(self.tick_now),
@@ -281,9 +282,10 @@ class TheBollTacticOfND(CtaTemplate):
                 # 止盈判断
                 self.xxx_profit_thr = abs(diff) > self.open_price
                 if self.xxx_profit_thr > self.const_profit_thr:
-                    if self.is_insert_order is False:
+                    if self.is_insert_order.__eq__(False):
                         self.is_insert_order = True
 
+                        self.strategy_trade_memo = "self.xxx_profit_thr-" + str(self.xxx_profit_thr)
                         if self.trade_direction == 1:
                             if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
                                 self.short(self.get_lowest_price_tick(self.tick_now),
@@ -310,21 +312,24 @@ class TheBollTacticOfND(CtaTemplate):
             # if self.tick_now.datetime.day > 15:
             #     return
 
-            if (abs(self.xxx_num_trend) >= self.const_num_trend) is False:
+            if (abs(self.xxx_num_trend) >= self.const_num_trend).__eq__(False):
                 return
 
             self.xxx_boll_mid_price_range = abs(self.tick_now.last_price - self.boll_mid) / self.boll_mid
-            if (self.xxx_boll_mid_price_range < self.const_boll_mid_price_range) is False:
+            if (self.xxx_boll_mid_price_range < self.const_boll_mid_price_range).__eq__(False):
                 return
 
             self.xxx_diff_ratio = max(self.const_highest_price_queue) / min(self.const_lowest_price_queue)
-            if (self.xxx_diff_ratio >= self.const_diff_ratio) is False:
+            if (self.xxx_diff_ratio >= self.const_diff_ratio).__eq__(False):
                 return
 
             volume = int(self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size())
-            if self.is_insert_order is False:
+            if self.is_insert_order.__eq__(False):
                 self.is_insert_order = True
 
+                self.strategy_trade_memo = "self.xxx_num_trend-" + str(self.xxx_num_trend) \
+                                           + " self.xxx_boll_mid_price_range-" + str(self.xxx_boll_mid_price_range) \
+                                           + " self.xxx_diff_ratio-" + str(self.xxx_diff_ratio)
                 if self.xxx_num_trend > 0:
                     self.trade_direction = 1
                     if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
