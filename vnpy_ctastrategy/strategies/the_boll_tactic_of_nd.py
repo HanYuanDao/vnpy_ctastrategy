@@ -278,6 +278,7 @@ class TheBollTacticOfND(CtaTemplate):
                                            abs(self.pos),
                                            net=True,
                                            memo=self.strategy_trade_memo)
+                        self.write_log("止损:" + self.strategy_trade_memo)
             else:
                 # 止盈判断
                 self.xxx_profit_thr = abs(diff) > self.open_price
@@ -308,6 +309,7 @@ class TheBollTacticOfND(CtaTemplate):
                                            abs(self.pos),
                                            net=True,
                                            memo=self.strategy_trade_memo)
+                        self.write_log("止盈:" + self.strategy_trade_memo)
         else:
             # if self.tick_now.datetime.day > 15:
             #     return
@@ -323,9 +325,9 @@ class TheBollTacticOfND(CtaTemplate):
             if (self.xxx_diff_ratio >= self.const_diff_ratio).__eq__(False):
                 return
 
-            volume = int(self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size())
             if self.is_insert_order.__eq__(False):
                 self.is_insert_order = True
+                volume = int(self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size())
 
                 self.strategy_trade_memo = "self.xxx_num_trend-" + str(self.xxx_num_trend) \
                                            + " self.xxx_boll_mid_price_range-" + str(self.xxx_boll_mid_price_range) \
@@ -354,6 +356,9 @@ class TheBollTacticOfND(CtaTemplate):
                                    volume,
                                    net=True,
                                    memo=self.strategy_trade_memo)
+
+                if self.trading:
+                    self.write_log("报单:" + self.strategy_trade_memo)
 
     def on_order(self, order: OrderData):
         if order.status.__eq__(Status.ALLTRADED) \
