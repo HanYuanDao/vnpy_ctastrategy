@@ -361,12 +361,13 @@ class TheBollTacticOfND(CtaTemplate):
                     self.write_log("报单:" + self.strategy_trade_memo)
 
     def on_order(self, order: OrderData):
-        if order.status.__eq__(Status.ALLTRADED) \
-                or order.status.__eq__(Status.CANCELLED) \
+        if order.status.__eq__(Status.CANCELLED) \
                 or order.status.__eq__(Status.REJECTED):
             self.is_insert_order = False
 
     def on_trade(self, trade: TradeData):
+        self.is_insert_order = False
+
         self.open_price = trade.price
         pass
 
