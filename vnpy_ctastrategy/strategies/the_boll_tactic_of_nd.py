@@ -372,9 +372,10 @@ class TheBollTacticOfND(CtaTemplate):
             self.is_insert_order = False
 
     def on_trade(self, trade: TradeData):
-        self.is_insert_order = False
+        if self.is_insert_order:
+            self.is_insert_order = False
 
-        self.open_price = trade.price
+            self.open_price = trade.price
         pass
 
     def reset_tmp_variable(self):
