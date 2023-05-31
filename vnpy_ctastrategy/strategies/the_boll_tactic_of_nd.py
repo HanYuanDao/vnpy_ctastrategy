@@ -287,7 +287,7 @@ class TheBollTacticOfND(CtaTemplate):
                         self.write_log("止损:" + self.strategy_trade_memo)
             else:
                 # 止盈判断
-                self.xxx_profit_thr = abs(diff) > self.open_price
+                self.xxx_profit_thr = abs(diff) / self.open_price
                 if self.xxx_profit_thr > self.const_profit_thr:
                     if self.is_insert_order.__eq__(False):
                         self.is_insert_order = True
