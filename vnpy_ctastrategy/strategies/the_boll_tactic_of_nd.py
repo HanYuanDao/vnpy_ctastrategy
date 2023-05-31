@@ -20,6 +20,7 @@ from collections import deque
 class TheBollTacticOfND(CtaTemplate):
     # 声明作者
     author = "Xin Qi Technical Corporation"
+    const_decimal_level = 100000
 
     const_flag_close_mode = 'lock'
 
@@ -256,7 +257,7 @@ class TheBollTacticOfND(CtaTemplate):
             if (self.trade_direction == 1 and diff < 0) \
                     or (self.trade_direction == 2 and diff > 0):
                 # 止损判断
-                self.xxx_loss_thr = abs(diff) / self.open_price
+                self.xxx_loss_thr = self.round_down(abs(diff) / self.open_price)
                 if self.xxx_loss_thr > self.const_loss_thr:
                     if self.is_insert_order.__eq__(False):
                         self.is_insert_order = True
@@ -287,7 +288,7 @@ class TheBollTacticOfND(CtaTemplate):
                         self.write_log("止损:" + self.strategy_trade_memo)
             else:
                 # 止盈判断
-                self.xxx_profit_thr = abs(diff) / self.open_price
+                self.xxx_profit_thr = self.round_down(abs(diff) / self.open_price)
                 if self.xxx_profit_thr > self.const_profit_thr:
                     if self.is_insert_order.__eq__(False):
                         self.is_insert_order = True
@@ -323,11 +324,13 @@ class TheBollTacticOfND(CtaTemplate):
             if (abs(self.xxx_num_trend) >= self.const_num_trend).__eq__(False):
                 return
 
-            self.xxx_boll_mid_price_range = abs(self.tick_now.last_price - self.boll_mid) / self.boll_mid
+            self.xxx_boll_mid_price_range = self.round_down(
+                abs(self.tick_now.last_price - self.boll_mid) / self.boll_mid)
             if (self.xxx_boll_mid_price_range < self.const_boll_mid_price_range).__eq__(False):
                 return
 
-            self.xxx_diff_ratio = max(self.const_highest_price_queue) / min(self.const_lowest_price_queue)
+            self.xxx_diff_ratio = self.round_down(
+                max(self.const_highest_price_queue) / min(self.const_lowest_price_queue))
             if (self.xxx_diff_ratio >= self.const_diff_ratio).__eq__(False):
                 return
 
@@ -408,3 +411,6 @@ class TheBollTacticOfND(CtaTemplate):
 
     def get_lowest_price_bar(self, bar: BarData):
         return bar.lower_limit_price
+
+    def round_down(self, num: float):
+        return int(num * self.const_decimal_level) / self.const_decimal_level
