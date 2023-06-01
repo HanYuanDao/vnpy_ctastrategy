@@ -768,8 +768,6 @@ class CtaEngine(BaseEngine):
         # Change trading status of strategy to False
         strategy.trading = False
 
-        strategy.inited = False
-
         # Cancel all orders of the strategy
         self.cancel_all(strategy)
 
