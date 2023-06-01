@@ -259,7 +259,7 @@ class TheBollTacticOfND(CtaTemplate):
                 # 止损判断
                 self.xxx_loss_thr = self.round_down(abs(diff) / self.open_price)
                 if self.xxx_loss_thr > self.const_loss_thr:
-                    if not self.is_insert_order and self.trading:
+                    if self.is_insert_order.__eq__(False) and self.trading:
                         self.is_insert_order = True
 
                         self.strategy_trade_memo = "self.xxx_loss_thr-" + str(self.xxx_loss_thr)
@@ -290,7 +290,7 @@ class TheBollTacticOfND(CtaTemplate):
                 # 止盈判断
                 self.xxx_profit_thr = self.round_down(abs(diff) / self.open_price)
                 if self.xxx_profit_thr > self.const_profit_thr:
-                    if not self.is_insert_order and self.trading:
+                    if self.is_insert_order.__eq__(False) and self.trading:
                         self.is_insert_order = True
 
                         self.strategy_trade_memo = "self.xxx_profit_thr-" + str(self.xxx_profit_thr)
@@ -334,7 +334,7 @@ class TheBollTacticOfND(CtaTemplate):
             if (self.xxx_diff_ratio >= self.const_diff_ratio).__eq__(False):
                 return
 
-            if not self.is_insert_order and self.trading:
+            if self.is_insert_order.__eq__(False) and self.trading:
                 self.is_insert_order = True
                 volume = int(self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size())
 
