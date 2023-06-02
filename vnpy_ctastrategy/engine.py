@@ -871,10 +871,11 @@ class CtaEngine(BaseEngine):
         data.pop("inited")      # Strategy status (inited, trading) should not be synced.
         data.pop("trading")
 
-        strategy_data = load_json(self.data_filename)
-        self.strategy_data[strategy.strategy_name] = data
-        strategy_data[strategy.strategy_name] = data
-        save_json(self.data_filename, strategy_data)
+        if strategy.tick_now is not None:
+            strategy_data = load_json(self.data_filename)
+            self.strategy_data[strategy.strategy_name] = data
+            strategy_data[strategy.strategy_name] = data
+            save_json(self.data_filename, strategy_data)
 
     def get_all_strategy_class_names(self):
         """
