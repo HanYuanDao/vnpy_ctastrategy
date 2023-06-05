@@ -273,7 +273,7 @@ class StrategyManager(QtWidgets.QFrame):
         else:
             self.start_button.setEnabled(True)
             self.ease_button.setEnabled(False)
-            self.stop_button.setEnabled(False)
+            self.stop_button.setEnabled(True)
             self.edit_button.setEnabled(True)
             self.remove_button.setEnabled(True)
 
