@@ -285,6 +285,10 @@ class StrategyManager(QtWidgets.QFrame):
         """"""
         self.cta_engine.start_strategy(self.strategy_name)
 
+    def ease_strategy(self):
+        """"""
+        self.cta_engine.ease_strategy(self.strategy_name)
+
     def stop_strategy(self):
         """"""
         self.cta_engine.stop_strategy(self.strategy_name)
