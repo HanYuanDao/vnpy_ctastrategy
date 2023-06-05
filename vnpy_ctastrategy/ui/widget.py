@@ -54,6 +54,9 @@ class CtaManager(QtWidgets.QWidget):
         start_button = QtWidgets.QPushButton("全部启动")
         start_button.clicked.connect(self.cta_engine.start_all_strategies)
 
+        ease_button = QtWidgets.QPushButton("全部稍息")
+        ease_button.clicked.connect(self.cta_engine.ease_all_strategies)
+
         stop_button = QtWidgets.QPushButton("全部停止")
         stop_button.clicked.connect(self.cta_engine.stop_all_strategies)
 
@@ -86,6 +89,7 @@ class CtaManager(QtWidgets.QWidget):
         hbox1.addStretch()
         hbox1.addWidget(init_button)
         hbox1.addWidget(start_button)
+        hbox1.addWidget(ease_button)
         hbox1.addWidget(stop_button)
         hbox1.addWidget(clear_button)
         hbox1.addWidget(roll_button)
@@ -200,6 +204,10 @@ class StrategyManager(QtWidgets.QFrame):
         self.start_button.clicked.connect(self.start_strategy)
         self.start_button.setEnabled(False)
 
+        self.ease_button = QtWidgets.QPushButton("稍息")
+        self.ease_button.clicked.connect(self.ease_strategy)
+        self.ease_button.setEnabled(False)
+
         self.stop_button = QtWidgets.QPushButton("停止")
         self.stop_button.clicked.connect(self.stop_strategy)
         self.stop_button.setEnabled(False)
@@ -227,6 +235,7 @@ class StrategyManager(QtWidgets.QFrame):
         hbox = QtWidgets.QHBoxLayout()
         hbox.addWidget(self.init_button)
         hbox.addWidget(self.start_button)
+        hbox.addWidget(self.ease_button)
         hbox.addWidget(self.stop_button)
         hbox.addWidget(self.edit_button)
         hbox.addWidget(self.remove_button)
@@ -251,16 +260,19 @@ class StrategyManager(QtWidgets.QFrame):
         trading = variables["trading"]
 
         if not inited:
+            self.init_button.setEnabled(True)
             return
         self.init_button.setEnabled(False)
 
         if trading:
             self.start_button.setEnabled(False)
+            self.ease_button.setEnabled(True)
             self.stop_button.setEnabled(True)
             self.edit_button.setEnabled(False)
             self.remove_button.setEnabled(False)
         else:
             self.start_button.setEnabled(True)
+            self.ease_button.setEnabled(False)
             self.stop_button.setEnabled(False)
             self.edit_button.setEnabled(True)
             self.remove_button.setEnabled(True)

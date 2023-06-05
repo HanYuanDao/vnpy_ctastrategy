@@ -754,6 +754,26 @@ class CtaEngine(BaseEngine):
 
         self.put_strategy_event(strategy)
 
+    def ease_strategies(self, strategy_name: str):
+        strategy = self.strategies[strategy_name]
+        if not strategy.trading:
+            return
+
+        # Call on_stop function of the strategy
+        self.call_strategy_func(strategy, strategy.on_stop)
+
+        # Change trading status of strategy to False
+        strategy.trading = False
+
+        # Cancel all orders of the strategy
+        self.cancel_all(strategy)
+
+        # Sync strategy variables to data file
+        self.sync_strategy_data(strategy)
+
+        # Update GUI
+        self.put_strategy_event(strategy)
+
     def stop_strategy(self, strategy_name: str):
         """
         Stop a strategy.
@@ -767,6 +787,7 @@ class CtaEngine(BaseEngine):
 
         # Change trading status of strategy to False
         strategy.trading = False
+        strategy.inited = False
 
         # Cancel all orders of the strategy
         self.cancel_all(strategy)
@@ -913,6 +934,12 @@ class CtaEngine(BaseEngine):
         """
         for strategy_name in self.strategies.keys():
             self.start_strategy(strategy_name)
+
+    def ease_all_strategies(self):
+        """
+        """
+        for strategy_name in self.strategies.keys():
+            self.ease_strategies(strategy_name)
 
     def stop_all_strategies(self):
         """
