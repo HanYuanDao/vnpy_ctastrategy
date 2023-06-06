@@ -754,7 +754,7 @@ class CtaEngine(BaseEngine):
 
         self.put_strategy_event(strategy)
 
-    def ease_strategies(self, strategy_name: str):
+    def ease_strategy(self, strategy_name: str):
         strategy = self.strategies[strategy_name]
         if not strategy.trading:
             return
