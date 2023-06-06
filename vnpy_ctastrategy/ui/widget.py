@@ -261,6 +261,9 @@ class StrategyManager(QtWidgets.QFrame):
 
         if not inited:
             self.init_button.setEnabled(True)
+            self.start_button.setEnabled(False)
+            self.ease_button.setEnabled(False)
+            self.stop_button.setEnabled(False)
             return
         self.init_button.setEnabled(False)
 

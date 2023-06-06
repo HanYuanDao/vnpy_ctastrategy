@@ -779,15 +779,15 @@ class CtaEngine(BaseEngine):
         Stop a strategy.
         """
         strategy = self.strategies[strategy_name]
-        if not strategy.trading:
+        if not strategy.inited and not strategy.trading:
             return
 
         # Call on_stop function of the strategy
         self.call_strategy_func(strategy, strategy.on_stop)
 
+        strategy.inited = False
         # Change trading status of strategy to False
         strategy.trading = False
-        strategy.inited = False
 
         # Cancel all orders of the strategy
         self.cancel_all(strategy)
