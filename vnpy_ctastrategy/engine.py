@@ -881,7 +881,8 @@ class CtaEngine(BaseEngine):
 
     def load_strategy_data_single(self, strategy_name: str):
         strategy_data = load_json(self.data_filename)
-        self.strategy_data[strategy_name] = strategy_data[strategy_name]
+        if strategy_data.get(strategy_name) is not None:
+            self.strategy_data[strategy_name] = strategy_data[strategy_name]
 
     def load_strategy_data(self):
         """
@@ -944,7 +945,7 @@ class CtaEngine(BaseEngine):
         """
         """
         for strategy_name in self.strategies.keys():
-            self.ease_strategies(strategy_name)
+            self.ease_strategy(strategy_name)
 
     def stop_all_strategies(self):
         """
