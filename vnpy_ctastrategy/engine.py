@@ -714,6 +714,7 @@ class CtaEngine(BaseEngine):
         self.call_strategy_func(strategy, strategy.on_init)
 
         # Restore strategy data(variables)
+        self.load_strategy_data(strategy)
         data = self.strategy_data.get(strategy_name, None)
         if data:
             for name in strategy.variables:
@@ -877,6 +878,10 @@ class CtaEngine(BaseEngine):
         except:  # noqa
             msg = f"策略文件{module_name}加载失败，触发异常：\n{traceback.format_exc()}"
             self.write_log(msg)
+
+    def load_strategy_data(self, strategy_name: str):
+        strategy_data = load_json(self.data_filename)
+        self.strategy_data[strategy_name] = strategy_data[strategy_name]
 
     def load_strategy_data(self):
         """
