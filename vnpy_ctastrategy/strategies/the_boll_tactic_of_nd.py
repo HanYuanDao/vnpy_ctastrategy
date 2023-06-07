@@ -244,6 +244,11 @@ class TheBollTacticOfND(CtaTemplate):
 
     def on_tick(self, tick: TickData):
         self.tick_now = tick
+
+        # 盘前盘后数据不进入逻辑
+        if self.tick_now.last_price == 0:
+            return
+
         # 将tick数据推送给bg以使其生成k线
         self.bg.update_tick(tick)
 
@@ -258,6 +263,7 @@ class TheBollTacticOfND(CtaTemplate):
                     or (self.trade_direction == 2 and diff > 0):
                 # 止损判断
                 self.xxx_loss_thr = self.round_down(abs(diff) / self.open_price)
+                self.put_event()
                 if self.xxx_loss_thr > self.const_loss_thr:
                     if self.is_insert_order.__eq__(False) and self.trading:
                         self.is_insert_order = True
@@ -289,6 +295,7 @@ class TheBollTacticOfND(CtaTemplate):
             else:
                 # 止盈判断
                 self.xxx_profit_thr = self.round_down(abs(diff) / self.open_price)
+                self.put_event()
                 if self.xxx_profit_thr > self.const_profit_thr:
                     if self.is_insert_order.__eq__(False) and self.trading:
                         self.is_insert_order = True
@@ -326,11 +333,13 @@ class TheBollTacticOfND(CtaTemplate):
 
             self.xxx_boll_mid_price_range = self.round_down(
                 abs(self.tick_now.last_price - self.boll_mid) / self.boll_mid)
+            self.put_event()
             if (self.xxx_boll_mid_price_range < self.const_boll_mid_price_range).__eq__(False):
                 return
 
             self.xxx_diff_ratio = self.round_down(
                 max(self.const_highest_price_queue) / min(self.const_lowest_price_queue))
+            self.put_event()
             if (self.xxx_diff_ratio >= self.const_diff_ratio).__eq__(False):
                 return
 
