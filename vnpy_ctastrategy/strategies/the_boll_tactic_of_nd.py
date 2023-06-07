@@ -246,7 +246,8 @@ class TheBollTacticOfND(CtaTemplate):
         self.tick_now = tick
 
         # 盘前盘后数据不进入逻辑
-        if self.tick_now.last_price == 0:
+        if 3 < self.tick_now.datetime.hour < 9 or \
+                15 <= self.tick_now.datetime.hour < 21:
             return
 
         # 将tick数据推送给bg以使其生成k线
