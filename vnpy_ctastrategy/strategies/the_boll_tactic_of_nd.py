@@ -241,6 +241,7 @@ class TheBollTacticOfND(CtaTemplate):
                 self.xxx_num_trend = 1
         else:
             self.xxx_num_trend = 0
+        self.put_event()
 
     def on_tick(self, tick: TickData):
         self.tick_now = tick
