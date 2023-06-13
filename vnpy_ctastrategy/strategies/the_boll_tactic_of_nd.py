@@ -129,96 +129,134 @@ class TheBollTacticOfND(CtaTemplate):
         self.const_highest_price_queue.append(bar.high_price)
         self.const_lowest_price_queue.append(bar.low_price)
 
-        # if len(self.const_highest_price_queue) < self.const_deque_size or \
-        #         len(self.const_lowest_price_queue) < self.const_deque_size:
-        #     return
-        #
-        # if self.pos != 0:
-        #     diff = self.bar_now.close_price - self.open_price
-        #
-        #     if (self.trade_direction == 1 and diff < 0) \
-        #             or (self.trade_direction == 2 and diff > 0):
-        #         # 止损判断
-        #         if abs(diff) > self.open_price * self.const_loss_thr:
-        #             if self.trade_direction == 1:
-        #                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-        #                     self.short(self.get_lowest_price_bar(self.bar_now),
-        #                                abs(self.pos),
-        #                                lock=True,
-        #                                memo=self.strategy_trade_memo)
-        #                 else:
-        #                     self.sell(self.get_lowest_price_bar(self.bar_now),
-        #                               abs(self.pos),
-        #                               net=True,
-        #                               memo=self.strategy_trade_memo)
-        #             else:
-        #                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-        #                     self.buy(self.get_highest_price_bar(self.bar_now),
-        #                              abs(self.pos),
-        #                              lock=True,
-        #                              memo=self.strategy_trade_memo)
-        #                 else:
-        #                     self.cover(self.get_highest_price_bar(self.bar_now),
-        #                                abs(self.pos),
-        #                                net=True,
-        #                                memo=self.strategy_trade_memo)
-        #     else:
-        #         # 止盈判断
-        #         if abs(diff) > self.open_price * self.const_profit_thr:
-        #             if self.trade_direction == 1:
-        #                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-        #                     self.short(self.get_lowest_price_bar(self.bar_now),
-        #                                abs(self.pos),
-        #                                lock=True,
-        #                                memo=self.strategy_trade_memo)
-        #                 else:
-        #                     self.sell(self.get_lowest_price_bar(self.bar_now),
-        #                               abs(self.pos),
-        #                               net=True,
-        #                               memo=self.strategy_trade_memo)
-        #             else:
-        #                 if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-        #                     self.buy(self.get_highest_price_bar(self.bar_now),
-        #                              abs(self.pos),
-        #                              lock=True,
-        #                              memo=self.strategy_trade_memo)
-        #                 else:
-        #                     self.cover(self.get_highest_price_bar(self.bar_now),
-        #                                abs(self.pos),
-        #                                net=True,
-        #                                memo=self.strategy_trade_memo)
-        # else:
-        #     if self.tick_now.datetime.day > 15:
-        #         return
-        #     if abs(self.xxx_num_trend) >= self.const_num_trend and \
-        #             abs(self.bar_now.close_price - self.boll_mid) < self.boll_mid * self.const_boll_mid_price_range and \
-        #             max(self.const_highest_price_queue) >= min(self.const_lowest_price_queue) * self.const_diff_ratio:
-        #         volume = int(self.const_jeton / self.get_symbol_margin()
-        #                      / self.bar_now.close_price / self.get_symbol_size())
-        #         if self.xxx_num_trend > 0:
-        #             self.trade_direction = 1
-        #             if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-        #                 self.buy(self.get_highest_price_bar(self.bar_now),
-        #                          volume,
-        #                          lock=True,
-        #                          memo=self.strategy_trade_memo)
-        #             else:
-        #                 self.buy(self.get_highest_price_bar(self.bar_now),
-        #                          volume,
-        #                          net=True,
-        #                          memo=self.strategy_trade_memo)
-        #         else:
-        #             self.trade_direction = 2
-        #             if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
-        #                 self.short(self.get_lowest_price_bar(self.bar_now),
-        #                            volume,
-        #                            lock=True,
-        #                            memo=self.strategy_trade_memo)
-        #             else:
-        #                 self.short(self.get_lowest_price_bar(self.bar_now),
-        #                            volume,
-        #                            net=True,
-        #                            memo=self.strategy_trade_memo)
+        # 盘前盘后数据不进入逻辑
+        if 3 < self.bar_now.datetime.hour < 9 or \
+                15 <= self.bar_now.datetime.hour < 21:
+            return
+
+        if len(self.const_highest_price_queue) < self.const_deque_size or \
+                len(self.const_lowest_price_queue) < self.const_deque_size:
+            return
+
+        if self.pos != 0:
+            diff = self.bar_now.close_price - self.open_price
+
+            if (self.trade_direction == 1 and diff < 0) \
+                    or (self.trade_direction == 2 and diff > 0):
+                # 止损判断
+                self.xxx_loss_thr = self.round_down(abs(diff) / self.open_price)
+                self.put_event()
+                if self.xxx_loss_thr > self.const_loss_thr:
+                    if self.is_insert_order.__eq__(False) and self.trading:
+                        self.is_insert_order = True
+
+                        self.strategy_trade_memo = "self.xxx_loss_thr-" + str(self.xxx_loss_thr)
+                        if self.trade_direction == 1:
+                            if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                                self.short(self.get_lowest_price_bar(self.bar_now),
+                                           abs(self.pos),
+                                           lock=True,
+                                           memo=self.strategy_trade_memo)
+                            else:
+                                self.sell(self.get_lowest_price_bar(self.bar_now),
+                                          abs(self.pos),
+                                          net=True,
+                                          memo=self.strategy_trade_memo)
+                        else:
+                            if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                                self.buy(self.get_highest_price_bar(self.bar_now),
+                                         abs(self.pos),
+                                         lock=True,
+                                         memo=self.strategy_trade_memo)
+                            else:
+                                self.cover(self.get_highest_price_bar(self.bar_now),
+                                           abs(self.pos),
+                                           net=True,
+                                           memo=self.strategy_trade_memo)
+                        self.write_log("止损:" + self.strategy_trade_memo)
+            else:
+                # 止盈判断
+                self.xxx_profit_thr = self.round_down(abs(diff) / self.open_price)
+                self.put_event()
+                if self.xxx_profit_thr > self.const_profit_thr:
+                    if self.is_insert_order.__eq__(False) and self.trading:
+                        self.is_insert_order = True
+
+                        self.strategy_trade_memo = "self.xxx_profit_thr-" + str(self.xxx_profit_thr)
+                        if self.trade_direction == 1:
+                            if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                                self.short(self.get_lowest_price_bar(self.bar_now),
+                                           abs(self.pos),
+                                           lock=True,
+                                           memo=self.strategy_trade_memo)
+                            else:
+                                self.sell(self.get_lowest_price_bar(self.bar_now),
+                                          abs(self.pos),
+                                          net=True,
+                                          memo=self.strategy_trade_memo)
+                        else:
+                            if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                                self.buy(self.get_highest_price_bar(self.bar_now),
+                                         abs(self.pos),
+                                         lock=True,
+                                         memo=self.strategy_trade_memo)
+                            else:
+                                self.cover(self.get_highest_price_bar(self.bar_now),
+                                           abs(self.pos),
+                                           net=True,
+                                           memo=self.strategy_trade_memo)
+                        self.write_log("止盈:" + self.strategy_trade_memo)
+        else:
+            if (abs(self.xxx_num_trend) >= self.const_num_trend).__eq__(False):
+                return
+
+            self.xxx_boll_mid_price_range = self.round_down(
+                abs(self.bar_now.close_price - self.boll_mid) / self.boll_mid)
+            self.put_event()
+            if (self.xxx_boll_mid_price_range < self.const_boll_mid_price_range).__eq__(False):
+                return
+
+            self.xxx_diff_ratio = self.round_down(
+                max(self.const_highest_price_queue) / min(self.const_lowest_price_queue))
+            self.put_event()
+            if (self.xxx_diff_ratio >= self.const_diff_ratio).__eq__(False):
+                return
+
+            if self.is_insert_order.__eq__(False) and self.trading:
+                self.is_insert_order = True
+                volume = int(
+                    self.const_jeton / self.get_symbol_margin() / self.bar_now.close_price / self.get_symbol_size())
+
+                self.strategy_trade_memo = "self.xxx_num_trend-" + str(self.xxx_num_trend) \
+                                           + " self.xxx_boll_mid_price_range-" + str(self.xxx_boll_mid_price_range) \
+                                           + " self.xxx_diff_ratio-" + str(self.xxx_diff_ratio)
+                if self.xxx_num_trend > 0:
+                    self.trade_direction = 1
+                    if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                        self.buy(self.get_highest_price_bar(self.bar_now),
+                                 volume,
+                                 lock=True,
+                                 memo=self.strategy_trade_memo)
+                    else:
+                        self.buy(self.get_highest_price_bar(self.bar_now),
+                                 volume,
+                                 net=True,
+                                 memo=self.strategy_trade_memo)
+                else:
+                    self.trade_direction = 2
+                    if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
+                        self.short(self.get_lowest_price_bar(self.bar_now),
+                                   volume,
+                                   lock=True,
+                                   memo=self.strategy_trade_memo)
+                    else:
+                        self.short(self.get_lowest_price_bar(self.bar_now),
+                                   volume,
+                                   net=True,
+                                   memo=self.strategy_trade_memo)
+
+                if self.trading:
+                    self.write_log("报单:" + self.strategy_trade_memo)
 
     def on_15min_bar(self, bar: BarData):
         am = self.am
