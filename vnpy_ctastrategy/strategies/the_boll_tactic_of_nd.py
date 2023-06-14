@@ -385,7 +385,10 @@ class TheBollTacticOfND(CtaTemplate):
 
             if self.is_insert_order.__eq__(False) and self.trading:
                 self.is_insert_order = True
-                volume = int(self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size())
+                # 手数根据分配资金除以保证金率除以合约最新成交价除以合约乘数 取整得到 并使用舍六进七进位法
+                volume = int(
+                    self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size()
+                    + 0.3)
 
                 self.strategy_trade_memo = "self.xxx_num_trend-" + str(self.xxx_num_trend) \
                                            + " self.xxx_boll_mid_price_range-" + str(self.xxx_boll_mid_price_range) \
