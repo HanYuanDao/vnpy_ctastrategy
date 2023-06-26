@@ -390,9 +390,9 @@ class TheBollTacticOfND(CtaTemplate):
                     self.const_jeton / self.get_symbol_margin() / self.tick_now.last_price / self.get_symbol_size()
                     + 0.3)
 
-                self.strategy_trade_memo = "self.xxx_num_trend-" + str(self.xxx_num_trend) \
-                                           + " self.xxx_boll_mid_price_range-" + str(self.xxx_boll_mid_price_range) \
-                                           + " self.xxx_diff_ratio-" + str(self.xxx_diff_ratio)
+                self.strategy_trade_memo = ("self.xxx_num_trend-" + str(self.xxx_num_trend) +
+                                           " self.xxx_boll_mid_price_range-" + str(self.xxx_boll_mid_price_range) +
+                                           " self.xxx_diff_ratio-" + str(self.xxx_diff_ratio))
                 if self.xxx_num_trend > 0:
                     self.trade_direction = 1
                     if self.const_flag_close_mode.__eq__(self.const_close_round_mode):
