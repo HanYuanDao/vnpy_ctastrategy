@@ -5,7 +5,7 @@ from copy import copy
 from typing import Any, Callable
 import datetime
 
-from vnpy.trader.constant import Interval, Direction, Offset
+from vnpy.trader.constant import Interval, Direction, Offset, Status
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData
 from vnpy.trader.utility import virtual
 
@@ -352,6 +352,68 @@ class CtaTemplate(ABC):
         """
         if self.trading:
             self.cta_engine.sync_strategy_data(self)
+
+
+class XinQiCtaTemplateBar(CtaTemplate):
+    author = "Xin Qi Technical Corporation"
+
+    parameters = [
+
+    ]
+
+    is_insert_order = False
+    variables = [
+        "is_insert_order",
+    ]
+
+    def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
+        """"""
+        super(XinQiCtaTemplateBar, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
+
+        self.tick_now: TickData = None
+        self.bar_now: BarData = None
+
+    def on_init(self):
+        self.write_log("策略初始化")
+
+        self.reset_tmp_variable()
+
+        # # 加载历史数据回测 加载天数
+        self.load_bar(0)
+        # # 加载tick数据回测 加载天数
+        # self.load_tick(0)
+
+    def on_start(self):
+        self.is_insert_order = False
+        self.write_log("策略启动")
+
+    def on_stop(self):
+        self.write_log("策略停止")
+
+    def on_bar(self, bar: BarData):
+        self.bg.update_bar(bar)
+
+        self.bar_now = bar
+
+    def on_15min_bar(self, bar: BarData):
+        am = self.am
+        am.update_bar(bar)
+        if not am.inited:
+            return
+
+    def on_tick(self, tick: TickData):
+        pass
+
+    def on_order(self, order: OrderData):
+        if order.status == Status.CANCELLED \
+                or order.status == Status.REJECTED:
+            self.is_insert_order = False
+
+    def on_trade(self, trade: TradeData):
+        if self.is_insert_order:
+            self.is_insert_order = False
+
+        pass
 
 
 class XinQiCtaTemplate(CtaTemplate):
