@@ -15,6 +15,7 @@ from vnpy_ctastrategy import (
 from vnpy.trader.constant import Status
 from datetime import datetime
 from collections import deque
+import talib
 
 
 class TheBollTacticOfND(CtaTemplate):
@@ -264,7 +265,7 @@ class TheBollTacticOfND(CtaTemplate):
         if not am.inited:
             return
 
-        self.boll_up, self.boll_down = am.boll(self.const_boll_window, self.const_boll_dev)
+        self.boll_up, self.boll_down = self.am.boll(self.const_boll_window, self.const_boll_dev)
 
         self.boll_mid = (self.boll_up + self.boll_down) / 2
         if bar.high_price < self.boll_mid:

@@ -15,20 +15,23 @@ from vnpy_ctastrategy import (
 from vnpy.trader.constant import Status
 from datetime import datetime
 from collections import deque
+import pandas
 
 
 class DoubleKStrategyWMN(XinQiCtaTemplateBar):
 
     author = "Xin Qi Technical Corporation"
 
+    const_k_level = 15
     const_k2_open_low_diff = 80
-    const_k2_turnover = 2800
+    const_k2_turnover = 2000
     const_volume = 10
     const_insert_order_price_ratio = 0.333
     const_over_price_ratio = 1
     const_no_trade_tick_num = 3
     const_sleep_15k_num = 5
-    super.parameters = super.parameters + [
+    parameters = XinQiCtaTemplateBar.parameters + [
+        "const_k_level",
         "const_k2_open_low_diff",
         "const_k2_turnover",
         "const_volume",
@@ -38,13 +41,13 @@ class DoubleKStrategyWMN(XinQiCtaTemplateBar):
         "const_sleep_15k_num"
     ]
 
-    xxx_k1: BarData
-    xxx_k2: BarData
-    xxx_insert_order_k1: BarData
-    xxx_insert_order_k2: BarData
+    xxx_k1 = None
+    xxx_k2 = None
+    xxx_insert_order_k1 = None
+    xxx_insert_order_k2 = None
     no_trade_tick_num = 0
     sleep_15k_num = 0
-    super.variables = super.variables + [
+    variables = XinQiCtaTemplateBar.variables + [
         "xxx_k1",
         "xxx_k2",
         "xxx_insert_order_k1",
@@ -61,7 +64,7 @@ class DoubleKStrategyWMN(XinQiCtaTemplateBar):
         self.bg = BarGenerator(self.on_bar, self.const_k_level, self.on_15min_bar)
 
         # 调用K线时间序列管理模块
-        self.am = ArrayManager(self.const_boll_window)
+        # self.am = ArrayManager()
 
     def on_xq_init(self):
         # # 加载历史数据回测 加载天数
@@ -114,10 +117,10 @@ class DoubleKStrategyWMN(XinQiCtaTemplateBar):
                 self.write_log("止损:" + self.strategy_trade_memo)
 
     def on_15min_bar(self, bar: BarData):
-        if not self.put_array_manager(self.am, bar):
-            return
+        # if not self.put_array_manager(self.am, bar):
+        #     return
 
-        if self.xxx_k2:
+        if self.xxx_k2 is None:
             self.xxx_k2 = bar
             return
         else:
@@ -190,7 +193,7 @@ class DoubleKStrategyWMN(XinQiCtaTemplateBar):
         else:
             # 判断止盈
             if (self.trade_direction == 1 and self.xxx_k2.turnover > self.xxx_insert_order_k1.turnover) or \
-                (self.trade_direction == 2 and self.xxx_k2.turnover < self.xxx_insert_order_k1.turnover):
+                    (self.trade_direction == 2 and self.xxx_k2.turnover < self.xxx_insert_order_k1.turnover):
                 self.strategy_trade_memo = "trade_direction-" + str(self.trade_direction) \
                                            + "k2.turnover" + str(self.xxx_k2.turnover) \
                                            + "insert_order_k1.turnover" + str(self.xxx_insert_order_k1.turnover)
@@ -224,4 +227,5 @@ class DoubleKStrategyWMN(XinQiCtaTemplateBar):
     def build_trade_parameter(self, trade: TradeData):
         pass
 
-
+    def reset_tmp_variable(self):
+        pass

@@ -7,7 +7,11 @@ import datetime
 
 from vnpy.trader.constant import Interval, Direction, Offset, Status
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData
-from vnpy.trader.utility import virtual
+from vnpy.trader.utility import virtual, ArrayManager
+
+from vnpy_ctastrategy import (
+    BarGenerator,
+)
 
 from .base import StopOrder, EngineType
 
@@ -20,11 +24,11 @@ class CtaTemplate(ABC):
     variables = []
 
     def __init__(
-        self,
-        cta_engine: Any,
-        strategy_name: str,
-        vt_symbol: str,
-        setting: dict,
+            self,
+            cta_engine: Any,
+            strategy_name: str,
+            vt_symbol: str,
+            setting: dict,
     ):
         """"""
         self.cta_engine = cta_engine
@@ -151,13 +155,13 @@ class CtaTemplate(ABC):
         pass
 
     def buy(
-        self,
-        price: float,
-        volume: float,
-        stop: bool = False,
-        lock: bool = False,
-        net: bool = False,
-        memo: str = ""
+            self,
+            price: float,
+            volume: float,
+            stop: bool = False,
+            lock: bool = False,
+            net: bool = False,
+            memo: str = ""
     ):
         """
         Send buy order to open a long position.
@@ -174,13 +178,13 @@ class CtaTemplate(ABC):
         )
 
     def sell(
-        self,
-        price: float,
-        volume: float,
-        stop: bool = False,
-        lock: bool = False,
-        net: bool = False,
-        memo: str = ""
+            self,
+            price: float,
+            volume: float,
+            stop: bool = False,
+            lock: bool = False,
+            net: bool = False,
+            memo: str = ""
     ):
         """
         Send sell order to close a long position.
@@ -197,13 +201,13 @@ class CtaTemplate(ABC):
         )
 
     def short(
-        self,
-        price: float,
-        volume: float,
-        stop: bool = False,
-        lock: bool = False,
-        net: bool = False,
-        memo: str = ""
+            self,
+            price: float,
+            volume: float,
+            stop: bool = False,
+            lock: bool = False,
+            net: bool = False,
+            memo: str = ""
     ):
         """
         Send short order to open as short position.
@@ -220,13 +224,13 @@ class CtaTemplate(ABC):
         )
 
     def cover(
-        self,
-        price: float,
-        volume: float,
-        stop: bool = False,
-        lock: bool = False,
-        net: bool = False,
-        memo: str = ""
+            self,
+            price: float,
+            volume: float,
+            stop: bool = False,
+            lock: bool = False,
+            net: bool = False,
+            memo: str = ""
     ):
         """
         Send cover order to close a short position.
@@ -246,15 +250,15 @@ class CtaTemplate(ABC):
         self.cta_engine.add_trade_intention(dt, memo)
 
     def send_order(
-        self,
-        direction: Direction,
-        offset: Offset,
-        price: float,
-        volume: float,
-        stop: bool = False,
-        lock: bool = False,
-        net: bool = False,
-        memo: str = ""
+            self,
+            direction: Direction,
+            offset: Offset,
+            price: float,
+            volume: float,
+            stop: bool = False,
+            lock: bool = False,
+            net: bool = False,
+            memo: str = ""
     ):
         """
         Send a new order.
@@ -306,11 +310,11 @@ class CtaTemplate(ABC):
         return self.cta_engine.get_symbol_margin(self)
 
     def load_bar(
-        self,
-        days: int,
-        interval: Interval = Interval.MINUTE,
-        callback: Callable = None,
-        use_database: bool = False
+            self,
+            days: int,
+            interval: Interval = Interval.MINUTE,
+            callback: Callable = None,
+            use_database: bool = False
     ):
         """
         Load historical bar data for initializing strategy.
@@ -356,19 +360,34 @@ class CtaTemplate(ABC):
 
 class XinQiCtaTemplateBar(CtaTemplate):
     author = "Xin Qi Technical Corporation"
+    const_flag_close_mode = 'lock'
 
+    const_close_round_mode = "lock"
+    const_price_tick = 0
     parameters = [
-
+        "const_close_round_mode",
+        "const_price_tick"
     ]
 
     is_insert_order = False
+    order_open_price = 0
+    strategy_trade_memo = ""
+    # 交易方向
+    # 0为初始状态 1为多 2为空
+    trade_direction = 0
     variables = [
         "is_insert_order",
+        "order_open_price",
+        "strategy_trade_memo",
+        "trade_direction"
     ]
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
         super(XinQiCtaTemplateBar, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
+
+        # 调用K线生成模块 从tick数据合成分钟k线
+        self.bg = BarGenerator(self.on_bar)
 
         self.tick_now: TickData = None
         self.bar_now: BarData = None
@@ -378,30 +397,94 @@ class XinQiCtaTemplateBar(CtaTemplate):
 
         self.reset_tmp_variable()
 
-        # # 加载历史数据回测 加载天数
-        self.load_bar(0)
-        # # 加载tick数据回测 加载天数
-        # self.load_tick(0)
+        self.on_xq_init()
+
+    @abc.abstractmethod
+    def on_xq_init(self):
+        """ 策略初始化的时候进行的操作
+
+        Args:
+
+        Returns:
+
+        """
+        pass
 
     def on_start(self):
         self.is_insert_order = False
         self.write_log("策略启动")
 
+        self.const_price_tick = self.get_pricetick()
+
+        self.on_xq_start()
+
+    @abc.abstractmethod
+    def on_xq_start(self):
+        """ 策略启动的时候进行的操作
+
+        Args:
+
+        Returns:
+
+        """
+        pass
+
     def on_stop(self):
         self.write_log("策略停止")
 
-    def on_bar(self, bar: BarData):
-        self.bg.update_bar(bar)
+        self.on_xq_stop()
 
-        self.bar_now = bar
+    @abc.abstractmethod
+    def on_xq_stop(self):
+        """ 策略停止的时候进行的操作
 
-    def on_15min_bar(self, bar: BarData):
-        am = self.am
-        am.update_bar(bar)
-        if not am.inited:
-            return
+        Args:
+
+        Returns:
+
+        """
+        pass
 
     def on_tick(self, tick: TickData):
+        self.tick_now = tick
+
+        # 盘前盘后数据不进入逻辑
+        if XinQiCtaTemplateBar.is_relax(self.tick_now):
+            return
+
+        # 将tick数据推送给bg以使其生成k线
+        self.bg.update_tick(tick)
+
+        self.build_tick_parameter()
+
+    @abc.abstractmethod
+    def build_tick_parameter(self, tick: TickData):
+        """ 当tick数据进来时进行相关的逻辑处理
+
+        Args:
+            tick:
+
+        Returns:
+
+        """
+        pass
+
+    def on_bar(self, bar: BarData):
+        self.bg.update_bar(bar)
+        self.bar_now = bar
+
+        self.build_bar_parameter()
+
+    @abc.abstractmethod
+    def build_bar_parameter(self, bar: BarData):
+        """ 当1分钟K线生成时处理1分钟K线数据
+
+        Args:
+            bar:
+
+        Returns:
+
+        """
         pass
 
     def on_order(self, order: OrderData):
@@ -409,11 +492,97 @@ class XinQiCtaTemplateBar(CtaTemplate):
                 or order.status == Status.REJECTED:
             self.is_insert_order = False
 
+        self.build_order_parameter(order)
+
+    @abc.abstractmethod
+    def build_order_parameter(self, order: OrderData):
+        """ 当报单成功时处理回调信息
+
+        Args:
+            order:
+
+        Returns:
+
+        """
+        pass
+
     def on_trade(self, trade: TradeData):
         if self.is_insert_order:
             self.is_insert_order = False
 
+        self.order_open_price = trade.price
+
+        self.build_trade_parameter(trade)
+
+    @abc.abstractmethod
+    def build_trade_parameter(self, trade: TradeData):
+        """ 当订单成交时处理回调信息
+
+        Args:
+            trade:
+
+        Returns:
+
+        """
         pass
+
+    @staticmethod
+    def put_array_manager(am: ArrayManager, bar: BarData):
+        am.update_bar(bar)
+        return am.inited
+
+    def xq_buy(self, price, volume, memo):
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
+                self.buy(price, volume, lock=True, memo=memo)
+            else:
+                self.buy(price, volume, net=True, memo=memo)
+
+    def xq_short(self, price, volume, memo):
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
+                self.short(price, volume, lock=True, memo=memo)
+            else:
+                self.short(price, volume, net=True, memo=memo)
+
+    def xq_sell(self, price, volume, memo):
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
+                self.sell(price, volume, lock=True, memo=memo)
+            else:
+                self.sell(price, volume, net=True, memo=memo)
+
+    def xq_cover(self, price, volume, memo):
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
+                self.cover(price, volume, lock=True, memo=memo)
+            else:
+                self.cover(price, volume, net=True, memo=memo)
+
+    @staticmethod
+    def is_close_mode(round_mode):
+        return XinQiCtaTemplateBar.const_flag_close_mode.__eq__(round_mode)
+
+    @abc.abstractmethod
+    def reset_tmp_variable(self):
+        """ 处理跨交易日时需要重置的参数
+
+        Returns:
+
+        """
+        pass
+
+    @staticmethod
+    def is_relax(tick: TickData) -> bool:
+        if 3 < tick.datetime.hour < 9 or \
+                15 <= tick.datetime.hour < 21:
+            return True
+        else:
+            return False
 
 
 class XinQiCtaTemplate(CtaTemplate):
