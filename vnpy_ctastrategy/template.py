@@ -448,6 +448,12 @@ class XinQiCtaTemplateBar(CtaTemplate):
     def on_tick(self, tick: TickData):
         self.tick_now = tick
 
+        if self.is_insert_order:
+            if self.no_trade_tick_num > 0:
+                self.no_trade_tick_num -= 1
+            else:
+                self.cancel_all()
+
         # 盘前盘后数据不进入逻辑
         if XinQiCtaTemplateBar.is_relax(self.tick_now):
             return

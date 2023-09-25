@@ -78,12 +78,8 @@ class DoubleKStrategyWMN(XinQiCtaTemplateBar):
     def on_xq_stop(self):
         pass
 
-    def on_tick(self, tick: TickData):
-        if self.is_insert_order:
-            if self.no_trade_tick_num > 0:
-                self.no_trade_tick_num -= 1
-            else:
-                self.cancel_all()
+    def build_tick_parameter(self, tick: TickData):
+        pass
 
     def build_bar_parameter(self):
         if self.pos != 0:
