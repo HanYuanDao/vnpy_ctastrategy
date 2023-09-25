@@ -546,6 +546,16 @@ class XinQiCtaTemplateBar(CtaTemplate):
         return am.inited
 
     def xq_buy(self, price, volume, memo):
+        """ 买入开仓
+
+        Args:
+            price:
+            volume:
+            memo:
+
+        Returns:
+
+        """
         if not self.is_insert_order and self.trading:
             self.is_insert_order = True
             if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
@@ -554,6 +564,16 @@ class XinQiCtaTemplateBar(CtaTemplate):
                 self.buy(price, volume, net=True, memo=memo)
 
     def xq_short(self, price, volume, memo):
+        """ 卖出开仓
+
+        Args:
+            price:
+            volume:
+            memo:
+
+        Returns:
+
+        """
         if not self.is_insert_order and self.trading:
             self.is_insert_order = True
             if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
@@ -562,6 +582,16 @@ class XinQiCtaTemplateBar(CtaTemplate):
                 self.short(price, volume, net=True, memo=memo)
 
     def xq_sell(self, price, volume, memo):
+        """ 卖出平仓
+
+        Args:
+            price:
+            volume:
+            memo:
+
+        Returns:
+
+        """
         if not self.is_insert_order and self.trading:
             self.is_insert_order = True
             if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
@@ -570,6 +600,16 @@ class XinQiCtaTemplateBar(CtaTemplate):
                 self.sell(price, volume, net=True, memo=memo)
 
     def xq_cover(self, price, volume, memo):
+        """ 买入平仓
+
+        Args:
+            price:
+            volume:
+            memo:
+
+        Returns:
+
+        """
         if not self.is_insert_order and self.trading:
             self.is_insert_order = True
             if XinQiCtaTemplateBar.is_close_mode(self.const_close_round_mode):
