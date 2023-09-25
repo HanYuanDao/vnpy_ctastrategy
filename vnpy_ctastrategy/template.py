@@ -360,16 +360,24 @@ class CtaTemplate(ABC):
 
 class XinQiCtaTemplateBar(CtaTemplate):
     author = "Xin Qi Technical Corporation"
+    # 锁仓报单的标识符
     const_flag_close_mode = 'lock'
 
+    # 报单模式 lock是为锁仓 其他则为平仓
     const_close_round_mode = "lock"
+    # 当前合约的最小变动价格
     const_price_tick = 0
     parameters = [
         "const_close_round_mode",
         "const_price_tick"
     ]
 
+    # 报单不成交的tick数
+    no_trade_tick_num = 0
+
+    # 是正在报单
     is_insert_order = False
+    # 当前订单的开仓价格
     order_open_price = 0
     strategy_trade_memo = ""
     # 交易方向
