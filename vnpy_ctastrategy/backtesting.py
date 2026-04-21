@@ -405,7 +405,11 @@ class BacktestingEngine:
                 ewm_window: ExponentialMovingWindow = df["return"].ewm(halflife=self.half_life)
                 ewm_mean: Series = ewm_window.mean() * 100
                 ewm_std: Series = ewm_window.std() * 100
-                ewm_sharpe = ((ewm_mean - daily_risk_free) / ewm_std)[-1] * np.sqrt(self.annual_days)
+                ewm_sharpe_series: Series = (ewm_mean - daily_risk_free) / ewm_std
+                if ewm_sharpe_series.empty:
+                    ewm_sharpe = 0
+                else:
+                    ewm_sharpe = ewm_sharpe_series.iloc[-1] * np.sqrt(self.annual_days)
             else:
                 sharpe_ratio = 0
                 ewm_sharpe = 0
