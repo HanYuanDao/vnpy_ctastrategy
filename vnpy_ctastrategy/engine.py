@@ -90,6 +90,7 @@ class CtaEngine(BaseEngine):
 
         self.stop_order_count: int = 0                                  # for generating stop_orderid
         self.stop_orders: dict[str, StopOrder] = {}                     # stop_orderid: stop_order
+        self.trade_intentions: dict[datetime, dict] = {}                # dt: trade intention
 
         self.init_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
 
@@ -461,6 +462,17 @@ class CtaEngine(BaseEngine):
         self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
         self.put_stop_order_event(stop_order)
 
+    def get_all_trade_intentions(self) -> list:
+        """Return all recorded trade intentions."""
+        return list(self.trade_intentions.values())
+
+    def add_trade_intention(self, dt: datetime, memo: str) -> None:
+        """Store strategy trade intention for later inspection."""
+        self.trade_intentions[dt] = {
+            "dt": dt,
+            "memo": memo,
+        }
+
     def send_order(
         self,
         strategy: CtaTemplate,
@@ -470,7 +482,8 @@ class CtaEngine(BaseEngine):
         volume: float,
         stop: bool,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = ""
     ) -> list:
         """
         """

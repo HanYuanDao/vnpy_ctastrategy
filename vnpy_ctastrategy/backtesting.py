@@ -88,6 +88,7 @@ class BacktestingEngine:
 
         self.trade_count: int = 0
         self.trades: dict[str, TradeData] = {}
+        self.trade_intentions: dict[datetime, dict] = {}
 
         self.logs: list = []
 
@@ -108,6 +109,7 @@ class BacktestingEngine:
 
         self.trade_count = 0
         self.trades.clear()
+        self.trade_intentions.clear()
 
         self.logs.clear()
         self.daily_results.clear()
@@ -693,6 +695,7 @@ class BacktestingEngine:
                 volume=order.volume,
                 datetime=self.datetime,
                 gateway_name=self.gateway_name,
+                trade_memo=order.memo,
             )
 
             self.strategy.pos += pos_change
@@ -744,7 +747,8 @@ class BacktestingEngine:
                 traded=stop_order.volume,
                 status=Status.ALLTRADED,
                 gateway_name=self.gateway_name,
-                datetime=self.datetime
+                datetime=self.datetime,
+                memo=stop_order.memo,
             )
 
             self.limit_orders[order.vt_orderid] = order
@@ -770,6 +774,7 @@ class BacktestingEngine:
                 volume=order.volume,
                 datetime=self.datetime,
                 gateway_name=self.gateway_name,
+                trade_memo=order.memo,
             )
 
             self.trades[trade.vt_tradeid] = trade
@@ -832,6 +837,13 @@ class BacktestingEngine:
 
         return ticks
 
+    def add_trade_intention(self, dt: datetime, memo: str) -> None:
+        """Store strategy trade intention during backtesting."""
+        self.trade_intentions[dt] = {
+            "dt": dt,
+            "memo": memo,
+        }
+
     def send_order(
         self,
         strategy: CtaTemplate,
@@ -841,14 +853,15 @@ class BacktestingEngine:
         volume: float,
         stop: bool,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = "",
     ) -> list:
         """"""
         price = round_to(price, self.pricetick)
         if stop:
-            vt_orderid: str = self.send_stop_order(direction, offset, price, volume)
+            vt_orderid: str = self.send_stop_order(direction, offset, price, volume, memo)
         else:
-            vt_orderid = self.send_limit_order(direction, offset, price, volume)
+            vt_orderid = self.send_limit_order(direction, offset, price, volume, memo)
         return [vt_orderid]
 
     def send_stop_order(
@@ -856,7 +869,8 @@ class BacktestingEngine:
         direction: Direction,
         offset: Offset,
         price: float,
-        volume: float
+        volume: float,
+        memo: str = "",
     ) -> str:
         """"""
         self.stop_order_count += 1
@@ -870,6 +884,7 @@ class BacktestingEngine:
             datetime=self.datetime,
             stop_orderid=f"{STOPORDER_PREFIX}.{self.stop_order_count}",
             strategy_name=self.strategy.strategy_name,
+            memo=memo,
         )
 
         self.active_stop_orders[stop_order.stop_orderid] = stop_order
@@ -882,7 +897,8 @@ class BacktestingEngine:
         direction: Direction,
         offset: Offset,
         price: float,
-        volume: float
+        volume: float,
+        memo: str = "",
     ) -> str:
         """"""
         self.limit_order_count += 1
@@ -897,7 +913,8 @@ class BacktestingEngine:
             volume=volume,
             status=Status.SUBMITTING,
             gateway_name=self.gateway_name,
-            datetime=self.datetime
+            datetime=self.datetime,
+            memo=memo,
         )
 
         self.active_limit_orders[order.vt_orderid] = order
@@ -1004,6 +1021,10 @@ class BacktestingEngine:
         Return all limit order data of current backtesting result.
         """
         return list(self.limit_orders.values())
+
+    def get_all_trade_intentions(self) -> list:
+        """Return all recorded trade intentions of current backtesting."""
+        return list(self.trade_intentions.values())
 
     def get_all_daily_results(self) -> list:
         """
