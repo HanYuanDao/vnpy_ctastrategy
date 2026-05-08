@@ -41,6 +41,7 @@ class StopOrder:
     datetime: datetime
     lock: bool = False
     net: bool = False
+    memo: str = ""
     vt_orderids: list = field(default_factory=list)
     status: StopOrderStatus = StopOrderStatus.WAITING
 

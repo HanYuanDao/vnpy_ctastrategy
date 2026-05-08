@@ -1,10 +1,12 @@
+from datetime import datetime
 from abc import ABC, abstractmethod
 from copy import copy
 from typing import Any, cast
 from collections.abc import Callable
 
-from vnpy.trader.constant import Interval, Direction, Offset
+from vnpy.trader.constant import Interval, Direction, Offset, Status
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData
+from vnpy.trader.utility import BarGenerator, ArrayManager
 
 from .base import StopOrder, EngineType
 
@@ -146,7 +148,8 @@ class CtaTemplate(ABC):
         volume: float,
         stop: bool = False,
         lock: bool = False,
-        net: bool = False
+        net: bool = False,
+        memo: str = "",
     ) -> list:
         """
         Send buy order to open a long position.
@@ -158,7 +161,8 @@ class CtaTemplate(ABC):
             volume,
             stop,
             lock,
-            net
+            net,
+            memo,
         )
 
     def sell(
@@ -167,7 +171,8 @@ class CtaTemplate(ABC):
         volume: float,
         stop: bool = False,
         lock: bool = False,
-        net: bool = False
+        net: bool = False,
+        memo: str = "",
     ) -> list:
         """
         Send sell order to close a long position.
@@ -179,7 +184,8 @@ class CtaTemplate(ABC):
             volume,
             stop,
             lock,
-            net
+            net,
+            memo,
         )
 
     def short(
@@ -188,7 +194,8 @@ class CtaTemplate(ABC):
         volume: float,
         stop: bool = False,
         lock: bool = False,
-        net: bool = False
+        net: bool = False,
+        memo: str = "",
     ) -> list:
         """
         Send short order to open as short position.
@@ -200,7 +207,8 @@ class CtaTemplate(ABC):
             volume,
             stop,
             lock,
-            net
+            net,
+            memo,
         )
 
     def cover(
@@ -209,7 +217,8 @@ class CtaTemplate(ABC):
         volume: float,
         stop: bool = False,
         lock: bool = False,
-        net: bool = False
+        net: bool = False,
+        memo: str = "",
     ) -> list:
         """
         Send cover order to close a short position.
@@ -221,8 +230,15 @@ class CtaTemplate(ABC):
             volume,
             stop,
             lock,
-            net
+            net,
+            memo,
         )
+
+    def add_trade_intention(self, dt: datetime, memo: str) -> None:
+        """
+        Record strategy trade intention in engine.
+        """
+        self.cta_engine.add_trade_intention(dt, memo)
 
     def send_order(
         self,
@@ -232,14 +248,15 @@ class CtaTemplate(ABC):
         volume: float,
         stop: bool = False,
         lock: bool = False,
-        net: bool = False
+        net: bool = False,
+        memo: str = "",
     ) -> list:
         """
         Send a new order.
         """
         if self.trading:
             vt_orderids: list = self.cta_engine.send_order(
-                self, direction, offset, price, volume, stop, lock, net
+                self, direction, offset, price, volume, stop, lock, net, memo
             )
             return vt_orderids
         else:
@@ -336,6 +353,377 @@ class CtaTemplate(ABC):
         """
         if self.trading:
             self.cta_engine.sync_strategy_data(self)
+
+
+class XinQiCtaTemplate(CtaTemplate):
+    author: str = "Xin Qi Technical Corporation"
+
+    const_flag_close_mode: str = "lock"
+    const_close_round_mode: str = "lock"
+    const_flag_insert_order_finish: bool = True
+
+    def __init__(
+        self,
+        cta_engine: Any,
+        strategy_name: str,
+        vt_symbol: str,
+        setting: dict,
+    ) -> None:
+        super().__init__(cta_engine, strategy_name, vt_symbol, setting)
+
+        self.tick_now: TickData | None = None
+        self.tick_pre: TickData | None = None
+        self.trade_date_open: TradeData | None = None
+        self.strategy_trade_state: int = 0
+
+    def on_tick(self, tick: TickData) -> None:
+        self.tick_now = tick
+
+        if self.tick_now.datetime.hour <= 8 or 16 < self.tick_now.datetime.hour < 21:
+            return
+
+        if self.tick_pre is not None:
+            current_trade_day: str = self.get_trade_day(self.tick_now)
+            previous_trade_day: str = self.get_trade_day(self.tick_pre)
+            if current_trade_day != previous_trade_day:
+                self.strategy_trade_state = 0
+                self.reset_tmp_variable()
+
+        self.handle_trade_process()
+        self.tick_pre = self.tick_now
+
+    def get_trade_day(self, tick: TickData) -> str:
+        trade_day: Any = getattr(tick, "tradDay", "")
+        if trade_day:
+            return str(trade_day)
+        return tick.datetime.date().isoformat()
+
+    def force_close4normal(self) -> None:
+        if self.strategy_trade_state not in {91, 92, 93}:
+            self.write_log("量化程序转为休眠状态")
+            self.write_log("量化程序开始强制平仓")
+            self.strategy_trade_state = 91
+
+        self.cancel_all()
+
+        if self.pos != 0 and self.tick_now is not None:
+            self.insert_order4force_close(trade_memo="force close when close")
+        elif self.strategy_trade_state == 92:
+            self.strategy_trade_state = 93
+            self.write_log("再次校验强制平仓时已无多余持仓")
+        else:
+            self.strategy_trade_state = 92
+            self.write_log("初次校验强制平仓时已无多余持仓")
+
+    def handle_trade_process(self) -> None:
+        if self.is_sleep_time():
+            self.force_close4normal()
+
+        self.build_quot_parameter()
+
+        if self.is_running_logic():
+            self.handle_trade_strategy()
+
+    def handle_trade_strategy(self) -> None:
+        if self.strategy_trade_state in {0, 1, 93}:
+            self.open()
+        elif self.strategy_trade_state == 5:
+            self.close4stop_profit()
+            self.close4stop_loss()
+        elif self.strategy_trade_state == 10:
+            self.close4stop_loss()
+        elif self.strategy_trade_state == 20:
+            self.close4stop_profit()
+
+        if self.const_flag_insert_order_finish:
+            if self.strategy_trade_state == 1:
+                self.insert_order4open()
+            elif self.strategy_trade_state == 10:
+                self.insert_order4stop_loss()
+            elif self.strategy_trade_state == 20:
+                self.insert_order4stop_profit()
+
+    def on_order(self, order: OrderData) -> None:
+        self.const_flag_insert_order_finish = False
+        self.build_order_parameter(order)
+        self.put_event()
+
+    def on_trade(self, trade: TradeData) -> None:
+        self.const_flag_insert_order_finish = True
+
+        if self.strategy_trade_state == 1:
+            self.trade_date_open = trade
+            self.strategy_trade_state = 5
+        elif self.strategy_trade_state in {10, 20}:
+            self.strategy_trade_state = 0
+        elif self.strategy_trade_state == 5:
+            self.insert_order4force_close(trade_memo="state error")
+        else:
+            self.write_log(f"func 'on_order' get an error strategy_trade_state{self.strategy_trade_state}")
+
+        self.build_trade_parameter(trade)
+        self.put_event()
+
+    @abstractmethod
+    def build_quot_parameter(self) -> None:
+        pass
+
+    @abstractmethod
+    def build_order_parameter(self, order: OrderData) -> None:
+        pass
+
+    @abstractmethod
+    def build_trade_parameter(self, trade: TradeData) -> None:
+        pass
+
+    @abstractmethod
+    def is_running_logic(self) -> bool:
+        pass
+
+    @abstractmethod
+    def open(self) -> None:
+        pass
+
+    @abstractmethod
+    def close4stop_loss(self) -> None:
+        pass
+
+    @abstractmethod
+    def close4stop_profit(self) -> None:
+        pass
+
+    @abstractmethod
+    def insert_order4open(self) -> None:
+        pass
+
+    @abstractmethod
+    def insert_order4stop_loss(self) -> None:
+        pass
+
+    @abstractmethod
+    def insert_order4stop_profit(self) -> None:
+        pass
+
+    def insert_order4force_close(self, trade_memo: str) -> None:
+        if self.tick_now is None:
+            return
+
+        self.insert_order(
+            self.const_flag_close_mode == self.const_close_round_mode,
+            self.pos < 0,
+            abs(int(self.pos)),
+            self.tick_now.ask_price_1 if self.pos < 0 else self.tick_now.bid_price_1,
+            trade_memo
+        )
+
+    @abstractmethod
+    def reset_tmp_variable(self) -> None:
+        pass
+
+    def is_sleep_time(self) -> bool:
+        if self.tick_now is None:
+            return False
+
+        return (
+            self.tick_now.datetime.hour == 14
+            and self.tick_now.datetime.minute == 59
+            and self.tick_now.datetime.second >= 55
+        ) or (
+            self.tick_now.datetime.hour == 22
+            and self.tick_now.datetime.minute == 59
+            and self.tick_now.datetime.second >= 55
+        )
+
+    def insert_order(
+        self,
+        is_lock: bool,
+        is_long: bool,
+        volume: int,
+        price: float,
+        trade_memo: str,
+    ) -> None:
+        _ = trade_memo
+
+        if is_lock:
+            if is_long:
+                self.buy(price, volume, lock=True, memo=trade_memo)
+            else:
+                self.cover(price, volume, lock=True, memo=trade_memo)
+        else:
+            if is_long:
+                self.buy(price, volume, net=True, memo=trade_memo)
+            else:
+                self.cover(price, volume, net=True, memo=trade_memo)
+
+
+class XinQiCtaTemplateBar(CtaTemplate):
+    author: str = "Xin Qi Technical Corporation"
+    const_flag_close_mode: str = "lock"
+    const_close_round_mode: str = "lock"
+    const_price_tick: float = 0
+    parameters: list = [
+        "const_close_round_mode",
+        "const_price_tick",
+    ]
+
+    no_trade_tick_num: int = 0
+    is_insert_order: bool = False
+    order_open_price: float = 0
+    strategy_trade_memo: str = ""
+    trade_direction: int = 0
+    variables: list = [
+        "is_insert_order",
+        "order_open_price",
+        "strategy_trade_memo",
+        "trade_direction",
+    ]
+
+    def __init__(
+        self,
+        cta_engine: Any,
+        strategy_name: str,
+        vt_symbol: str,
+        setting: dict,
+    ) -> None:
+        super().__init__(cta_engine, strategy_name, vt_symbol, setting)
+
+        self.bg: BarGenerator = BarGenerator(self.on_bar)
+        self.tick_now: TickData | None = None
+        self.bar_now: BarData | None = None
+
+    def on_init(self) -> None:
+        self.write_log("策略初始化")
+        self.reset_tmp_variable()
+        self.on_xq_init()
+
+    @abstractmethod
+    def on_xq_init(self) -> None:
+        pass
+
+    def on_start(self) -> None:
+        self.is_insert_order = False
+        self.write_log("策略启动")
+
+        self.const_price_tick = self.get_pricetick()
+        self.on_xq_start()
+
+    @abstractmethod
+    def on_xq_start(self) -> None:
+        pass
+
+    def on_stop(self) -> None:
+        self.write_log("策略停止")
+        self.on_xq_stop()
+
+    @abstractmethod
+    def on_xq_stop(self) -> None:
+        pass
+
+    def on_tick(self, tick: TickData) -> None:
+        self.tick_now = tick
+
+        if self.is_insert_order:
+            if self.no_trade_tick_num > 0:
+                self.no_trade_tick_num -= 1
+            else:
+                self.cancel_all()
+
+        if self.is_relax(tick):
+            return
+
+        self.bg.update_tick(tick)
+        self.build_tick_parameter(tick)
+
+    @abstractmethod
+    def build_tick_parameter(self, tick: TickData) -> None:
+        pass
+
+    def on_bar(self, bar: BarData) -> None:
+        self.bg.update_bar(bar)
+        self.bar_now = bar
+        self.build_bar_parameter(bar)
+
+    @abstractmethod
+    def build_bar_parameter(self, bar: BarData) -> None:
+        pass
+
+    def on_order(self, order: OrderData) -> None:
+        if order.status in {Status.CANCELLED, Status.REJECTED}:
+            self.is_insert_order = False
+
+        self.build_order_parameter(order)
+
+    @abstractmethod
+    def build_order_parameter(self, order: OrderData) -> None:
+        pass
+
+    def on_trade(self, trade: TradeData) -> None:
+        if self.is_insert_order:
+            self.is_insert_order = False
+
+        self.order_open_price = trade.price
+        self.build_trade_parameter(trade)
+
+    @abstractmethod
+    def build_trade_parameter(self, trade: TradeData) -> None:
+        pass
+
+    @staticmethod
+    def put_array_manager(am: ArrayManager, bar: BarData) -> bool:
+        am.update_bar(bar)
+        return am.inited
+
+    def xq_buy(self, price: float, volume: float, memo: str) -> None:
+        self.strategy_trade_memo = memo
+
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if self.is_close_mode(self.const_close_round_mode):
+                self.buy(price, volume, lock=True, memo=memo)
+            else:
+                self.buy(price, volume, net=True, memo=memo)
+
+    def xq_short(self, price: float, volume: float, memo: str) -> None:
+        self.strategy_trade_memo = memo
+
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if self.is_close_mode(self.const_close_round_mode):
+                self.short(price, volume, lock=True, memo=memo)
+            else:
+                self.short(price, volume, net=True, memo=memo)
+
+    def xq_sell(self, price: float, volume: float, memo: str) -> None:
+        self.strategy_trade_memo = memo
+
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if self.is_close_mode(self.const_close_round_mode):
+                self.sell(price, volume, lock=True, memo=memo)
+            else:
+                self.sell(price, volume, net=True, memo=memo)
+
+    def xq_cover(self, price: float, volume: float, memo: str) -> None:
+        self.strategy_trade_memo = memo
+
+        if not self.is_insert_order and self.trading:
+            self.is_insert_order = True
+            if self.is_close_mode(self.const_close_round_mode):
+                self.cover(price, volume, lock=True, memo=memo)
+            else:
+                self.cover(price, volume, net=True, memo=memo)
+
+    @staticmethod
+    def is_close_mode(round_mode: str) -> bool:
+        return XinQiCtaTemplateBar.const_flag_close_mode == round_mode
+
+    @abstractmethod
+    def reset_tmp_variable(self) -> None:
+        pass
+
+    @staticmethod
+    def is_relax(tick: TickData) -> bool:
+        return 3 < tick.datetime.hour < 9 or 15 <= tick.datetime.hour < 21
 
 
 class CtaSignal(ABC):

@@ -7,6 +7,7 @@ from datetime import (
 from typing import cast, Any
 from collections.abc import Callable
 from functools import lru_cache, partial
+from copy import copy
 import traceback
 
 import numpy as np
@@ -87,6 +88,7 @@ class BacktestingEngine:
 
         self.trade_count: int = 0
         self.trades: dict[str, TradeData] = {}
+        self.trade_intentions: dict[datetime, dict] = {}
 
         self.logs: list = []
 
@@ -107,6 +109,7 @@ class BacktestingEngine:
 
         self.trade_count = 0
         self.trades.clear()
+        self.trade_intentions.clear()
 
         self.logs.clear()
         self.daily_results.clear()
@@ -337,6 +340,7 @@ class BacktestingEngine:
         ewm_sharpe: float = 0
         return_drawdown_ratio: float = 0
         rgr_ratio: float = 0
+        success_rate: float = 0
 
         # Check if balance is always positive
         positive_balance: bool = False
@@ -447,6 +451,14 @@ class BacktestingEngine:
                 cvar_95
             )
 
+        trade_pairs: list = self.generate_trade_pairs()
+        trade_round_total_num: int = len(trade_pairs)
+        if trade_round_total_num:
+            trade_round_win_num: int = len(
+                [tp for tp in trade_pairs if tp["profit_round"] == "盈利"]
+            )
+            success_rate = trade_round_win_num / trade_round_total_num
+
         # Output
         if output:
             self.output("-" * 30)
@@ -484,6 +496,7 @@ class BacktestingEngine:
             self.output(f"EWM Sharpe：\t{ewm_sharpe:,.2f}")
             self.output(_("收益回撤比：\t{:,.2f}").format(return_drawdown_ratio))
             self.output(f"RGR Ratio：\t{rgr_ratio:,.2f}")
+            self.output(_("交易回合胜率：\t{:,.2f}%").format(success_rate * 100))
 
         statistics: dict = {
             "start_date": start_date,
@@ -514,6 +527,7 @@ class BacktestingEngine:
             "ewm_sharpe": ewm_sharpe,
             "return_drawdown_ratio": return_drawdown_ratio,
             "rgr_ratio": rgr_ratio,
+            "success_rate": success_rate,
         }
 
         # Filter potential error infinite value
@@ -733,6 +747,7 @@ class BacktestingEngine:
                 price=trade_price,
                 volume=order.volume,
                 datetime=self.datetime,
+                trade_memo=order.memo,
                 gateway_name=self.gateway_name,
             )
 
@@ -784,6 +799,7 @@ class BacktestingEngine:
                 volume=stop_order.volume,
                 traded=stop_order.volume,
                 status=Status.ALLTRADED,
+                memo=stop_order.memo,
                 gateway_name=self.gateway_name,
                 datetime=self.datetime
             )
@@ -810,6 +826,7 @@ class BacktestingEngine:
                 price=trade_price,
                 volume=order.volume,
                 datetime=self.datetime,
+                trade_memo=order.memo,
                 gateway_name=self.gateway_name,
             )
 
@@ -882,14 +899,15 @@ class BacktestingEngine:
         volume: float,
         stop: bool,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = "",
     ) -> list:
         """"""
         price = round_to(price, self.pricetick)
         if stop:
-            vt_orderid: str = self.send_stop_order(direction, offset, price, volume)
+            vt_orderid: str = self.send_stop_order(direction, offset, price, volume, memo)
         else:
-            vt_orderid = self.send_limit_order(direction, offset, price, volume)
+            vt_orderid = self.send_limit_order(direction, offset, price, volume, memo)
         return [vt_orderid]
 
     def send_stop_order(
@@ -897,7 +915,8 @@ class BacktestingEngine:
         direction: Direction,
         offset: Offset,
         price: float,
-        volume: float
+        volume: float,
+        memo: str = "",
     ) -> str:
         """"""
         self.stop_order_count += 1
@@ -911,6 +930,7 @@ class BacktestingEngine:
             datetime=self.datetime,
             stop_orderid=f"{STOPORDER_PREFIX}.{self.stop_order_count}",
             strategy_name=self.strategy.strategy_name,
+            memo=memo,
         )
 
         self.active_stop_orders[stop_order.stop_orderid] = stop_order
@@ -923,7 +943,8 @@ class BacktestingEngine:
         direction: Direction,
         offset: Offset,
         price: float,
-        volume: float
+        volume: float,
+        memo: str = "",
     ) -> str:
         """"""
         self.limit_order_count += 1
@@ -937,6 +958,7 @@ class BacktestingEngine:
             price=price,
             volume=volume,
             status=Status.SUBMITTING,
+            memo=memo,
             gateway_name=self.gateway_name,
             datetime=self.datetime
         )
@@ -1046,11 +1068,81 @@ class BacktestingEngine:
         """
         return list(self.limit_orders.values())
 
+    def get_all_trade_intentions(self) -> list:
+        """
+        Return all trade intentions recorded during backtesting.
+        """
+        return list(self.trade_intentions.values())
+
     def get_all_daily_results(self) -> list:
         """
         Return all daily result data.
         """
         return list(self.daily_results.values())
+
+    def add_trade_intention(self, dt: datetime, memo: str) -> None:
+        """
+        Record trade intention from strategy.
+        """
+        ti: dict = {
+            "dt": dt,
+            "memo": memo,
+        }
+        self.trade_intentions[dt] = ti
+
+    def generate_trade_pairs(self) -> list:
+        """
+        Match open and close trades into trade pairs.
+        """
+        long_trades: list = []
+        short_trades: list = []
+        trade_pairs: list = []
+
+        for trade in list(self.trades.values()):
+            trade = copy(trade)
+
+            if trade.direction == Direction.LONG:
+                same_direction: list = long_trades
+                opposite_direction: list = short_trades
+            else:
+                same_direction = short_trades
+                opposite_direction = long_trades
+
+            while trade.volume and opposite_direction:
+                open_trade: TradeData = opposite_direction[0]
+                close_volume: float = min(open_trade.volume, trade.volume)
+
+                if trade.direction == Direction.LONG:
+                    profit_loss: float = (open_trade.price - trade.price) * close_volume
+                else:
+                    profit_loss = (trade.price - open_trade.price) * close_volume
+
+                trade_pairs.append(
+                    {
+                        "symbol": trade.symbol,
+                        "open_dt": open_trade.datetime,
+                        "open_price": open_trade.price,
+                        "close_dt": trade.datetime,
+                        "close_price": trade.price,
+                        "direction": open_trade.direction,
+                        "volume": close_volume,
+                        "profit_loss": profit_loss,
+                        "profit_round": "盈利" if profit_loss > 0 else "亏损",
+                        "trade_memo_open": open_trade.trade_memo,
+                        "trade_memo_close": trade.trade_memo,
+                    }
+                )
+
+                open_trade.volume -= close_volume
+                if not open_trade.volume:
+                    opposite_direction.pop(0)
+
+                trade.volume -= close_volume
+
+            if trade.volume:
+                same_direction.append(trade)
+
+        return trade_pairs
 
 
 class DailyResult:

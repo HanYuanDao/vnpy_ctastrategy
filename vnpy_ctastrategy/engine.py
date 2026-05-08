@@ -90,6 +90,7 @@ class CtaEngine(BaseEngine):
 
         self.stop_order_count: int = 0                                  # for generating stop_orderid
         self.stop_orders: dict[str, StopOrder] = {}                     # stop_orderid: stop_order
+        self.trade_intentions: dict[datetime, dict] = {}                # strategy trade intentions
 
         self.init_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
 
@@ -182,6 +183,7 @@ class CtaEngine(BaseEngine):
                 stop_orderid=order.vt_orderid,
                 strategy_name=strategy.strategy_name,
                 datetime=order.datetime,        # type: ignore
+                memo=order.memo,
                 status=STOP_STATUS_MAP[order.status],
                 vt_orderids=[order.vt_orderid],
             )
@@ -202,6 +204,10 @@ class CtaEngine(BaseEngine):
         strategy: CtaTemplate | None = self.orderid_strategy_map.get(trade.vt_orderid, None)
         if not strategy:
             return
+
+        order: OrderData | None = self.main_engine.get_order(trade.vt_orderid)
+        if order and not trade.trade_memo:
+            trade.trade_memo = order.memo
 
         # Update strategy pos before calling on_trade method
         if trade.direction == Direction.LONG:
@@ -259,7 +265,8 @@ class CtaEngine(BaseEngine):
                     price,
                     stop_order.volume,
                     stop_order.lock,
-                    stop_order.net
+                    stop_order.net,
+                    stop_order.memo,
                 )
 
                 # Update stop order status if placed successfully
@@ -290,7 +297,8 @@ class CtaEngine(BaseEngine):
         volume: float,
         type: OrderType,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = "",
     ) -> list:
         """
         Send a new order to server.
@@ -304,7 +312,8 @@ class CtaEngine(BaseEngine):
             type=type,
             price=price,
             volume=volume,
-            reference=f"{APP_NAME}_{strategy.strategy_name}"
+            reference=f"{APP_NAME}_{strategy.strategy_name}",
+            memo=memo,
         )
 
         # Convert with offset converter
@@ -344,7 +353,8 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = "",
     ) -> list:
         """
         Send a limit order to server.
@@ -358,7 +368,8 @@ class CtaEngine(BaseEngine):
             volume,
             OrderType.LIMIT,
             lock,
-            net
+            net,
+            memo,
         )
 
     def send_server_stop_order(
@@ -370,7 +381,8 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = "",
     ) -> list:
         """
         Send a stop order to server.
@@ -387,7 +399,8 @@ class CtaEngine(BaseEngine):
             volume,
             OrderType.STOP,
             lock,
-            net
+            net,
+            memo,
         )
 
     def send_local_stop_order(
@@ -398,7 +411,8 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = "",
     ) -> list:
         """
         Create a new local stop order.
@@ -416,7 +430,8 @@ class CtaEngine(BaseEngine):
             strategy_name=strategy.strategy_name,
             datetime=datetime.now(DB_TZ),
             lock=lock,
-            net=net
+            net=net,
+            memo=memo,
         )
 
         self.stop_orders[stop_orderid] = stop_order
@@ -463,6 +478,22 @@ class CtaEngine(BaseEngine):
         self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
         self.put_stop_order_event(stop_order)
 
+    def get_all_trade_intentions(self) -> list:
+        """
+        Return all recorded trade intentions.
+        """
+        return list(self.trade_intentions.values())
+
+    def add_trade_intention(self, dt: datetime, memo: str) -> None:
+        """
+        Record trade intention from strategy.
+        """
+        ti: dict = {
+            "dt": dt,
+            "memo": memo,
+        }
+        self.trade_intentions[dt] = ti
+
     def send_order(
         self,
         strategy: CtaTemplate,
@@ -472,7 +503,8 @@ class CtaEngine(BaseEngine):
         volume: float,
         stop: bool,
         lock: bool,
-        net: bool
+        net: bool,
+        memo: str = "",
     ) -> list:
         """
         """
@@ -488,15 +520,15 @@ class CtaEngine(BaseEngine):
         if stop:
             if contract.stop_supported:
                 return self.send_server_stop_order(
-                    strategy, contract, direction, offset, price, volume, lock, net
+                    strategy, contract, direction, offset, price, volume, lock, net, memo
                 )
             else:
                 return self.send_local_stop_order(
-                    strategy, direction, offset, price, volume, lock, net
+                    strategy, direction, offset, price, volume, lock, net, memo
                 )
         else:
             return self.send_limit_order(
-                strategy, contract, direction, offset, price, volume, lock, net
+                strategy, contract, direction, offset, price, volume, lock, net, memo
             )
 
     def cancel_order(self, strategy: CtaTemplate, vt_orderid: str) -> None:

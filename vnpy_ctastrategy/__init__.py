@@ -30,13 +30,21 @@ from vnpy.trader.utility import BarGenerator, ArrayManager
 
 from .base import APP_NAME, StopOrder
 from .engine import CtaEngine
-from .template import CtaTemplate, CtaSignal, TargetPosTemplate
+from .template import (
+    CtaTemplate,
+    XinQiCtaTemplate,
+    XinQiCtaTemplateBar,
+    CtaSignal,
+    TargetPosTemplate,
+)
 
 
 __all__ = [
     "APP_NAME",
     "CtaEngine",
     "CtaTemplate",
+    "XinQiCtaTemplate",
+    "XinQiCtaTemplateBar",
     "CtaSignal",
     "TargetPosTemplate",
     "StopOrder",
