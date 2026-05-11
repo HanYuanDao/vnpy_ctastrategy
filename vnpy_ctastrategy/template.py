@@ -4,7 +4,7 @@ from copy import copy
 from typing import Any, cast
 from collections.abc import Callable
 
-from vnpy.trader.constant import Interval, Direction, Offset, Status
+from vnpy.trader.constant import Interval, Direction, Offset, Status, Produce, Exchange, CtaTradeStat
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData
 from vnpy.trader.utility import BarGenerator, ArrayManager
 
@@ -374,11 +374,18 @@ class XinQiCtaTemplate(CtaTemplate):
         self.tick_now: TickData | None = None
         self.tick_pre: TickData | None = None
         self.trade_date_open: TradeData | None = None
-        self.strategy_trade_state: int = 0
+
+        self.exchange: Exchange = Produce.get_product(vt_symbol).exchange
+        # 交易方向
+        # 0为初始状态 1为多 2为空
+        trade_direction = 0
+        # 策略交易的状态，使用 CtaTradeStat 表达。
+        self.strategy_trade_state: CtaTradeStat = CtaTradeStat.INACTIVE
 
     def on_tick(self, tick: TickData) -> None:
         self.tick_now = tick
 
+        # 剔除非交易时间行情
         if self.tick_now.datetime.hour <= 8 or 16 < self.tick_now.datetime.hour < 21:
             return
 
@@ -386,7 +393,7 @@ class XinQiCtaTemplate(CtaTemplate):
             current_trade_day: str = self.get_trade_day(self.tick_now)
             previous_trade_day: str = self.get_trade_day(self.tick_pre)
             if current_trade_day != previous_trade_day:
-                self.strategy_trade_state = 0
+                self.strategy_trade_state = CtaTradeStat.INACTIVE
                 self.reset_tmp_variable()
 
         self.handle_trade_process()
@@ -398,49 +405,43 @@ class XinQiCtaTemplate(CtaTemplate):
             return str(trade_day)
         return tick.datetime.date().isoformat()
 
-    def force_close4normal(self) -> None:
-        if self.strategy_trade_state not in {91, 92, 93}:
-            self.write_log("量化程序转为休眠状态")
-            self.write_log("量化程序开始强制平仓")
-            self.strategy_trade_state = 91
-
-        self.cancel_all()
-
-        if self.pos != 0 and self.tick_now is not None:
-            self.insert_order4force_close(trade_memo="force close when close")
-        elif self.strategy_trade_state == 92:
-            self.strategy_trade_state = 93
-            self.write_log("再次校验强制平仓时已无多余持仓")
-        else:
-            self.strategy_trade_state = 92
-            self.write_log("初次校验强制平仓时已无多余持仓")
-
     def handle_trade_process(self) -> None:
+        """ 处理交易相关的逻辑 """
         if self.is_sleep_time():
-            self.force_close4normal()
+            self.close_market()
 
         self.build_quot_parameter()
 
         if self.is_running_logic():
             self.handle_trade_strategy()
 
+    def close_market(self) -> None:
+        """ 收盘的操作 """
+        self.write_log("收盘前进行强制平仓")
+        self.force_close4normal()
+
     def handle_trade_strategy(self) -> None:
-        if self.strategy_trade_state in {0, 1, 93}:
+        """ 根据当前状态进行不同的操作 """
+        if self.strategy_trade_state in {
+            CtaTradeStat.INACTIVE,
+            CtaTradeStat.OPENING,
+            CtaTradeStat.CLEANING_CONFIRMED,
+        }:
             self.open()
-        elif self.strategy_trade_state == 5:
+        elif self.strategy_trade_state == CtaTradeStat.HOLDING:
             self.close4stop_profit()
             self.close4stop_loss()
-        elif self.strategy_trade_state == 10:
+        elif self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
             self.close4stop_loss()
-        elif self.strategy_trade_state == 20:
+        elif self.strategy_trade_state == CtaTradeStat.STOP_PROFITING:
             self.close4stop_profit()
 
         if self.const_flag_insert_order_finish:
-            if self.strategy_trade_state == 1:
+            if self.strategy_trade_state == CtaTradeStat.OPENING:
                 self.insert_order4open()
-            elif self.strategy_trade_state == 10:
+            elif self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
                 self.insert_order4stop_loss()
-            elif self.strategy_trade_state == 20:
+            elif self.strategy_trade_state == CtaTradeStat.STOP_PROFITING:
                 self.insert_order4stop_profit()
 
     def on_order(self, order: OrderData) -> None:
@@ -451,12 +452,15 @@ class XinQiCtaTemplate(CtaTemplate):
     def on_trade(self, trade: TradeData) -> None:
         self.const_flag_insert_order_finish = True
 
-        if self.strategy_trade_state == 1:
+        if self.strategy_trade_state == CtaTradeStat.OPENING:
             self.trade_date_open = trade
-            self.strategy_trade_state = 5
-        elif self.strategy_trade_state in {10, 20}:
-            self.strategy_trade_state = 0
-        elif self.strategy_trade_state == 5:
+            self.strategy_trade_state = CtaTradeStat.HOLDING
+        elif self.strategy_trade_state in {
+            CtaTradeStat.STOP_LOSSING,
+            CtaTradeStat.STOP_PROFITING,
+        }:
+            self.strategy_trade_state = CtaTradeStat.INACTIVE
+        elif self.strategy_trade_state == CtaTradeStat.HOLDING:
             self.insert_order4force_close(trade_memo="state error")
         else:
             self.write_log(f"func 'on_order' get an error strategy_trade_state{self.strategy_trade_state}")
@@ -516,11 +520,37 @@ class XinQiCtaTemplate(CtaTemplate):
             trade_memo
         )
 
+    def force_close4normal(self) -> None:
+        """ 正常地强制平仓 """
+        if self.strategy_trade_state not in {
+            CtaTradeStat.SLEEPING,
+            CtaTradeStat.CLEANING_FIRST,
+            CtaTradeStat.CLEANING_CONFIRMED,
+        }:
+            self.write_log("量化程序转为休眠状态")
+            self.write_log("量化程序开始强制平仓")
+            self.strategy_trade_state = CtaTradeStat.SLEEPING
+
+        self.cancel_all()
+
+        if self.pos != 0 and self.tick_now is not None:
+            self.insert_order4force_close(trade_memo="force close when close")
+        elif self.strategy_trade_state == CtaTradeStat.CLEANING_FIRST:
+            self.strategy_trade_state = CtaTradeStat.CLEANING_CONFIRMED
+            self.write_log("再次校验强制平仓时已无多余持仓")
+        else:
+            self.strategy_trade_state = CtaTradeStat.CLEANING_FIRST
+            self.write_log("初次校验强制平仓时已无多余持仓")
+
     @abstractmethod
     def reset_tmp_variable(self) -> None:
+        """ 重置跨交易日的相关参数的状态"""
         pass
 
     def is_sleep_time(self) -> bool:
+        """ 判断是否需要休眠
+        """
+        # TODO Jason Han：需要根据不同的合约区别收盘时间
         if self.tick_now is None:
             return False
 
