@@ -356,11 +356,16 @@ class CtaTemplate(ABC):
 
 
 class XinQiCtaTemplate(CtaTemplate):
+    """
+    XinQi 按照自己的交易规则定义的CTA策略
+    规则和约定如下：
+        1。 把临近的多、空方向的报单计作一个回合。当多、空报单手数一致时认为回合结束。
+        2。 不会追加持仓，在一次开仓完整之后一定会等待回合完成之后再进行开仓操作。
+    """
     author: str = "Xin Qi Technical Corporation"
 
     const_flag_close_mode: str = "lock"
     const_close_round_mode: str = "lock"
-    const_flag_insert_order_finish: bool = True
 
     def __init__(
         self,
@@ -373,12 +378,18 @@ class XinQiCtaTemplate(CtaTemplate):
 
         self.tick_now: TickData | None = None
         self.tick_pre: TickData | None = None
+        # 判断当前开仓持仓对象 在回合开始时赋值 在回合结束时置为None
         self.trade_date_open: TradeData | None = None
+        # 判断是否盈利 在回合开始后新的行情数据进来时赋值 在回合结束时置为None
+        self.is_profit: bool | None = None
+        # 表明当前的报单是否已经成交
+        self.insert_order_finish: bool = True
 
+        # 获取到合约对应的交易所信息
         self.exchange: Exchange = Produce.get_product(vt_symbol).exchange
         # 交易方向
         # 0为初始状态 1为多 2为空
-        trade_direction = 0
+        self.trade_direction = 0
         # 策略交易的状态，使用 CtaTradeStat 表达。
         self.strategy_trade_state: CtaTradeStat = CtaTradeStat.INACTIVE
 
@@ -386,15 +397,24 @@ class XinQiCtaTemplate(CtaTemplate):
         self.tick_now = tick
 
         # 剔除非交易时间行情
-        if self.tick_now.datetime.hour <= 8 or 16 < self.tick_now.datetime.hour < 21:
+        if self.tick_now.datetime.hour <= 8 or 16 <= self.tick_now.datetime.hour < 21:
             return
 
+        # 判断当前行情数据是否跨天
         if self.tick_pre is not None:
             current_trade_day: str = self.get_trade_day(self.tick_now)
             previous_trade_day: str = self.get_trade_day(self.tick_pre)
             if current_trade_day != previous_trade_day:
                 self.strategy_trade_state = CtaTradeStat.INACTIVE
                 self.reset_tmp_variable()
+
+        # 在持仓状态下 算出当前的盈亏情况
+        if self.trade_date_open is not None:
+            if ((self.trade_date_open.direction.LONG and self.trade_date_open.price > self.tick_now.last_price)
+                    or (self.trade_date_open.direction.SHORT and self.trade_date_open.price < self.tick_now.last_price)):
+                self.is_profit = True
+            else:
+                self.is_profit = False
 
         self.handle_trade_process()
         self.tick_pre = self.tick_now
@@ -421,40 +441,51 @@ class XinQiCtaTemplate(CtaTemplate):
         self.force_close4normal()
 
     def handle_trade_strategy(self) -> None:
-        """ 根据当前状态进行不同的操作 """
+        """
+        根据当前策略状态以及不同的标签进行策略状态的变迁
+        这个状态里不进行任何参数的赋值 只进行状态的变迁已经对应状态绑定的方法的触发
+        """
         if self.strategy_trade_state in {
             CtaTradeStat.INACTIVE,
             CtaTradeStat.OPENING,
             CtaTradeStat.CLEANING_CONFIRMED,
         }:
-            self.open()
-        elif self.strategy_trade_state == CtaTradeStat.HOLDING:
-            self.close4stop_profit()
-            self.close4stop_loss()
-        elif self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
-            self.close4stop_loss()
-        elif self.strategy_trade_state == CtaTradeStat.STOP_PROFITING:
-            self.close4stop_profit()
+            self.x_judge4open()
+        elif self.strategy_trade_state in (
+                CtaTradeStat.HOLDING, CtaTradeStat.STOP_LOSSING, CtaTradeStat.STOP_PROFITING) :
+            if self.is_profit is not None:
+                if self.is_profit:
+                    self.x_judge4stop_profit()
+                    if self.strategy_trade_state == CtaTradeStat.STOP_PROFITING:
+                        self.x_insert_order4stop_profit()
+                else:
+                    self.x_judge4stop_loss()
+                    if self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
+                        self.x_insert_order4stop_loss()
 
-        if self.const_flag_insert_order_finish:
-            if self.strategy_trade_state == CtaTradeStat.OPENING:
-                self.insert_order4open()
-            elif self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
-                self.insert_order4stop_loss()
+        if self.insert_order_finish:
+            if self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
+                self.x_insert_order4stop_loss()
             elif self.strategy_trade_state == CtaTradeStat.STOP_PROFITING:
-                self.insert_order4stop_profit()
+                self.x_insert_order4stop_profit()
+        else:
+            if self.strategy_trade_state == CtaTradeStat.OPENING:
+                self.x_insert_order4open()
 
     def on_order(self, order: OrderData) -> None:
-        self.const_flag_insert_order_finish = False
+        self.insert_order_finish = False
         self.build_order_parameter(order)
         self.put_event()
 
     def on_trade(self, trade: TradeData) -> None:
-        self.const_flag_insert_order_finish = True
+        self.insert_order_finish = False
+        self.is_profit = None
+        self.trade_date_open = None
 
         if self.strategy_trade_state == CtaTradeStat.OPENING:
-            self.trade_date_open = trade
             self.strategy_trade_state = CtaTradeStat.HOLDING
+            self.insert_order_finish = True
+            self.trade_date_open = trade
         elif self.strategy_trade_state in {
             CtaTradeStat.STOP_LOSSING,
             CtaTradeStat.STOP_PROFITING,
@@ -482,30 +513,49 @@ class XinQiCtaTemplate(CtaTemplate):
 
     @abstractmethod
     def is_running_logic(self) -> bool:
+        """
+        可以定制额外的暂停逻辑
+        是程序不进入到开仓、止盈、止损的状态判断里
+        """
         pass
 
     @abstractmethod
-    def open(self) -> None:
+    def x_judge4open(self) -> None:
+        """
+        判断是否将策略状态改为开仓状态（self.strategy_trade_state = CtaTradeStat.OPENING）
+        该方法中只能对self.strategy_trade_state进行设置 不能对其他参数进行设置
+        """
         pass
 
     @abstractmethod
-    def close4stop_loss(self) -> None:
+    def x_judge4stop_loss(self) -> None:
+        """
+        判断是否将策略状态改为止损状态（self.strategy_trade_state = CtaTradeStat.STOP_LOSSING）
+        该方法中只能对self.strategy_trade_state进行设置 不能对其他参数进行设置
+        """
         pass
 
     @abstractmethod
-    def close4stop_profit(self) -> None:
+    def x_judge4stop_profit(self) -> None:
+        """
+        判断是否将策略状态改为止盈状态（self.strategy_trade_state = CtaTradeStat.STOP_PROFITING）
+        该方法中只能对self.strategy_trade_state进行设置 不能对其他参数进行设置
+        """
         pass
 
     @abstractmethod
-    def insert_order4open(self) -> None:
+    def x_insert_order4open(self) -> None:
+        """ 调用insert_order进行开仓时候的报单 """
         pass
 
     @abstractmethod
-    def insert_order4stop_loss(self) -> None:
+    def x_insert_order4stop_loss(self) -> None:
+        """ 调用insert_order进行止损平仓时候的报单 """
         pass
 
     @abstractmethod
-    def insert_order4stop_profit(self) -> None:
+    def x_insert_order4stop_profit(self) -> None:
+        """ 调用insert_order进行止盈平仓时候的报单 """
         pass
 
     def insert_order4force_close(self, trade_memo: str) -> None:
