@@ -1,10 +1,12 @@
 from datetime import datetime
 from abc import ABC, abstractmethod
 from copy import copy
+from time import sleep
 from typing import Any, cast
 from collections.abc import Callable
+from collections import deque
 
-from vnpy.trader.constant import Interval, Direction, Offset, Status, Produce, Exchange, CtaTradeStat
+from vnpy.trader.constant import Interval, Direction, Offset, Status, Produce, Exchange, CtaTradeState
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData
 from vnpy.trader.utility import BarGenerator, ArrayManager
 
@@ -367,6 +369,9 @@ class XinQiCtaTemplate(CtaTemplate):
     const_flag_close_mode: str = "lock"
     const_close_round_mode: str = "lock"
 
+    price_coefficient_4_force_close: int = 100
+    relax_tick_num: int = 5 * 60 * 4
+
     def __init__(
         self,
         cta_engine: Any,
@@ -381,9 +386,7 @@ class XinQiCtaTemplate(CtaTemplate):
         # 判断当前开仓持仓对象 在回合开始时赋值 在回合结束时置为None
         self.trade_date_open: TradeData | None = None
         # 判断是否盈利 在回合开始后新的行情数据进来时赋值 在回合结束时置为None
-        self.is_profit: bool | None = None
-        # 表明当前的报单是否已经成交
-        self.insert_order_finish: bool = True
+        self.is_profit: bool = False
 
         # 获取到合约对应的交易所信息
         self.exchange: Exchange = Produce.get_product(vt_symbol).exchange
@@ -391,7 +394,8 @@ class XinQiCtaTemplate(CtaTemplate):
         # 0为初始状态 1为多 2为空
         self.trade_direction = 0
         # 策略交易的状态，使用 CtaTradeStat 表达。
-        self.strategy_trade_state: CtaTradeStat = CtaTradeStat.INACTIVE
+        self.strategy_trade_state_deque: deque[CtaTradeState] = deque(maxlen=5)
+        self.strategy_trade_state_deque.append(CtaTradeState.INACTIVE)
 
     def on_tick(self, tick: TickData) -> None:
         self.tick_now = tick
@@ -402,16 +406,18 @@ class XinQiCtaTemplate(CtaTemplate):
 
         # 判断当前行情数据是否跨天
         if self.tick_pre is not None:
-            current_trade_day: str = self.get_trade_day(self.tick_now)
-            previous_trade_day: str = self.get_trade_day(self.tick_pre)
+            current_trade_day: str = XinQiCtaTemplate.get_trade_day(self.tick_now)
+            previous_trade_day: str = XinQiCtaTemplate.get_trade_day(self.tick_pre)
             if current_trade_day != previous_trade_day:
-                self.strategy_trade_state = CtaTradeStat.INACTIVE
+                self.handle_state(CtaTradeState.INACTIVE, "行情数据跨天")
                 self.reset_tmp_variable()
 
         # 在持仓状态下 算出当前的盈亏情况
         if self.trade_date_open is not None:
-            if ((self.trade_date_open.direction.LONG and self.trade_date_open.price > self.tick_now.last_price)
-                    or (self.trade_date_open.direction.SHORT and self.trade_date_open.price < self.tick_now.last_price)):
+            if ((self.trade_date_open.direction == Direction.LONG
+                 and self.tick_now.last_price > self.trade_date_open.price)
+                    or (self.trade_date_open.direction == Direction.SHORT
+                        and self.tick_now.last_price < self.trade_date_open.price)):
                 self.is_profit = True
             else:
                 self.is_profit = False
@@ -419,188 +425,257 @@ class XinQiCtaTemplate(CtaTemplate):
         self.handle_trade_process()
         self.tick_pre = self.tick_now
 
-    def get_trade_day(self, tick: TickData) -> str:
-        trade_day: Any = getattr(tick, "tradDay", "")
-        if trade_day:
-            return str(trade_day)
-        return tick.datetime.date().isoformat()
-
     def handle_trade_process(self) -> None:
         """ 处理交易相关的逻辑 """
-        if self.is_sleep_time():
+        if self.is_closing_time():
             self.close_market()
 
         self.build_quot_parameter()
 
         if self.is_running_logic():
-            self.handle_trade_strategy()
+            self.handle_state_4_tick()
 
     def close_market(self) -> None:
         """ 收盘的操作 """
         self.write_log("收盘前进行强制平仓")
-        self.force_close4normal()
+        self.handle_state(CtaTradeState.CLEANING_TRADING_SESSION, "收盘前进行强制平仓")
 
-    def handle_trade_strategy(self) -> None:
+    def handle_state(self, new_state: CtaTradeState, memo: str) -> None:
+        if self.strategy_trade_state_deque[-1] == new_state:
+            return
+
+        self.write_log(f"状态进行更新 旧状态为{self.strategy_trade_state_deque[-1]} "
+                       f"新状态为{new_state} 更新备注为{memo}")
+        self.strategy_trade_state_deque.append(new_state)
+
+        # 流程
+        if self.strategy_trade_state_deque[-1] == CtaTradeState.INACTIVE:
+            self.reset_round_variable()
+        elif self.strategy_trade_state_deque[-1] == CtaTradeState.OPENING:
+            if self.strategy_trade_state_deque[-2] == CtaTradeState.INACTIVE:
+                self.insert_order_4_open()
+        elif self.strategy_trade_state_deque[-1] == CtaTradeState.HOLDING:
+            # 如果前置状态是在止盈或者止损则撤单
+            if self.strategy_trade_state_deque[-2] in (CtaTradeState.STOP_PROFITING, CtaTradeState.STOP_LOSSING):
+                self.cancel_all()
+        elif self.strategy_trade_state_deque[-1] == CtaTradeState.STOP_LOSSING:
+            # 如果前置状态是在止盈则撤单
+            if self.strategy_trade_state_deque[-2] == CtaTradeState.STOP_PROFITING:
+                self.cancel_all()
+            self.insert_order_4_stop_loss()
+        elif self.strategy_trade_state_deque[-1] == CtaTradeState.STOP_PROFITING:
+            # 如果前置状态是在止损则撤单
+            if self.strategy_trade_state_deque[-2] == CtaTradeState.STOP_LOSSING:
+                self.cancel_all()
+            self.insert_order_4_stop_profit()
+        # elif self.strategy_trade_state_deque[-1] == CtaTradeState.SLEEPING:
+        elif self.strategy_trade_state_deque[-1] == CtaTradeState.CLEANING_TRADING_SESSION:
+            self.force_close_4_normal()
+        else:
+            self.write_log(f"尚未匹配处理流程的CTA策略状态")
+
+    def handle_state_4_tick(self) -> None:
         """
         根据当前策略状态以及不同的标签进行策略状态的变迁
         这个状态里不进行任何参数的赋值 只进行状态的变迁已经对应状态绑定的方法的触发
         """
-        if self.strategy_trade_state in {
-            CtaTradeStat.INACTIVE,
-            CtaTradeStat.OPENING,
-            CtaTradeStat.CLEANING_CONFIRMED,
+        if self.strategy_trade_state_deque[-1] in {
+            CtaTradeState.INACTIVE,
+            CtaTradeState.OPENING
         }:
-            self.x_judge4open()
-        elif self.strategy_trade_state in (
-                CtaTradeStat.HOLDING, CtaTradeStat.STOP_LOSSING, CtaTradeStat.STOP_PROFITING) :
-            if self.is_profit is not None:
-                if self.is_profit:
-                    self.x_judge4stop_profit()
-                    if self.strategy_trade_state == CtaTradeStat.STOP_PROFITING:
-                        self.x_insert_order4stop_profit()
-                else:
-                    self.x_judge4stop_loss()
-                    if self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
-                        self.x_insert_order4stop_loss()
-
-        if self.insert_order_finish:
-            if self.strategy_trade_state == CtaTradeStat.STOP_LOSSING:
-                self.x_insert_order4stop_loss()
-            elif self.strategy_trade_state == CtaTradeStat.STOP_PROFITING:
-                self.x_insert_order4stop_profit()
-        else:
-            if self.strategy_trade_state == CtaTradeStat.OPENING:
-                self.x_insert_order4open()
+            self.judge_4_open()
+        elif self.strategy_trade_state_deque[-1] in (
+                CtaTradeState.HOLDING, CtaTradeState.STOP_LOSSING, CtaTradeState.STOP_PROFITING) :
+            if self.is_profit:
+                self.judge_4_stop_profit()
+            else:
+                self.judge_4_stop_loss()
 
     def on_order(self, order: OrderData) -> None:
-        self.insert_order_finish = False
         self.build_order_parameter(order)
         self.put_event()
 
     def on_trade(self, trade: TradeData) -> None:
-        self.insert_order_finish = False
-        self.is_profit = None
+        self.is_profit = False
         self.trade_date_open = None
 
-        if self.strategy_trade_state == CtaTradeStat.OPENING:
-            self.strategy_trade_state = CtaTradeStat.HOLDING
-            self.insert_order_finish = True
+        if self.strategy_trade_state_deque[-1] == CtaTradeState.OPENING:
+            self.handle_state(CtaTradeState.HOLDING, "开仓成交，开仓订单已经接收到成交回调")
             self.trade_date_open = trade
-        elif self.strategy_trade_state in {
-            CtaTradeStat.STOP_LOSSING,
-            CtaTradeStat.STOP_PROFITING,
+        elif self.strategy_trade_state_deque[-1] in {
+            CtaTradeState.STOP_LOSSING,
+            CtaTradeState.STOP_PROFITING,
         }:
-            self.strategy_trade_state = CtaTradeStat.INACTIVE
-        elif self.strategy_trade_state == CtaTradeStat.HOLDING:
-            self.insert_order4force_close(trade_memo="state error")
+            self.handle_state(CtaTradeState.INACTIVE, "止盈止损成交，止盈止损订单已接收到成交回调")
+        elif self.strategy_trade_state_deque[-1] == CtaTradeState.HOLDING:
+            self.insert_order_4_force_close(trade_memo="收到成交消息时，交易已经是成交状态")
         else:
-            self.write_log(f"func 'on_order' get an error strategy_trade_state{self.strategy_trade_state}")
+            self.write_log(f"on_trade处理时策略状态错误，状态为{self.strategy_trade_state_deque[-1]}。现进行强制平仓的操作。")
+            self.insert_order_4_force_close(trade_memo="收到成交消息时，交易状态错误")
 
         self.build_trade_parameter(trade)
         self.put_event()
 
     @abstractmethod
     def build_quot_parameter(self) -> None:
+        """
+        编辑当on_tick方法回调时，根据回调传入的TickData修改策略代码中的相关参数
+        """
         pass
 
     @abstractmethod
     def build_order_parameter(self, order: OrderData) -> None:
+        """
+        编辑当on_order方法回调时，根据回调传入的on_order修改策略代码中的相关参数
+        """
         pass
 
     @abstractmethod
     def build_trade_parameter(self, trade: TradeData) -> None:
+        """
+        编辑当on_trade方法回调时，根据回调传入的TradeData修改策略代码中的相关参数
+        """
         pass
 
-    @abstractmethod
     def is_running_logic(self) -> bool:
+        return (CtaTradeState.SLEEPING != self.strategy_trade_state_deque[-1]
+                and self.x_is_running_logic())
+
+    @abstractmethod
+    def x_is_running_logic(self) -> bool:
         """
         可以定制额外的暂停逻辑
         是程序不进入到开仓、止盈、止损的状态判断里
         """
         pass
 
+    def judge_4_open(self) -> None:
+        """
+
+        """
+        if self.x_judge_4_open():
+            self.handle_state(CtaTradeState.OPENING, "开仓判断通过，进行开仓操作")
+
     @abstractmethod
-    def x_judge4open(self) -> None:
+    def x_judge_4_open(self) -> bool:
         """
         判断是否将策略状态改为开仓状态（self.strategy_trade_state = CtaTradeStat.OPENING）
-        该方法中只能对self.strategy_trade_state进行设置 不能对其他参数进行设置
+        默认值为false，确认修改策略状态为开仓状态则返回true
+        该方法中不对任意一个参数值进行修改
         """
         pass
 
+    def judge_4_stop_loss(self) -> None:
+        """
+
+        """
+        if self.x_judge_4_stop_loss():
+            self.handle_state(CtaTradeState.STOP_LOSSING, "止损判断通过，进行止损操作")
+
     @abstractmethod
-    def x_judge4stop_loss(self) -> None:
+    def x_judge_4_stop_loss(self) -> bool:
         """
         判断是否将策略状态改为止损状态（self.strategy_trade_state = CtaTradeStat.STOP_LOSSING）
-        该方法中只能对self.strategy_trade_state进行设置 不能对其他参数进行设置
+        默认值为false，确认修改策略状态为止损状态则返回true
+        该方法中不对任意一个参数值进行修改
         """
         pass
 
+    def judge_4_stop_profit(self) -> None:
+        """
+
+        """
+        if self.x_judge_4_stop_profit():
+            self.handle_state(CtaTradeState.STOP_PROFITING, "止盈判断通过，进行止盈操作")
+
     @abstractmethod
-    def x_judge4stop_profit(self) -> None:
+    def x_judge_4_stop_profit(self) -> bool:
         """
         判断是否将策略状态改为止盈状态（self.strategy_trade_state = CtaTradeStat.STOP_PROFITING）
-        该方法中只能对self.strategy_trade_state进行设置 不能对其他参数进行设置
+        默认值为false，确认修改策略状态为止盈状态则返回true
+        该方法中不对任意一个参数值进行修改
         """
         pass
 
+    def insert_order_4_open(self) -> None:
+        """ 调用insert_order进行开仓时候的报单 """
+        self.x_insert_order_4_open()
+
     @abstractmethod
-    def x_insert_order4open(self) -> None:
+    def x_insert_order_4_open(self) -> None:
         """ 调用insert_order进行开仓时候的报单 """
         pass
 
+    def insert_order_4_stop_loss(self) -> None:
+        """ 调用insert_order进行止损平仓时候的报单 """
+        self.x_insert_order_4_stop_loss()
+
     @abstractmethod
-    def x_insert_order4stop_loss(self) -> None:
+    def x_insert_order_4_stop_loss(self) -> None:
         """ 调用insert_order进行止损平仓时候的报单 """
         pass
 
+    def insert_order_4_stop_profit(self) -> None:
+        """ 调用insert_order进行止盈平仓时候的报单 """
+        self.x_insert_order_4_stop_profit()
+
     @abstractmethod
-    def x_insert_order4stop_profit(self) -> None:
+    def x_insert_order_4_stop_profit(self) -> None:
         """ 调用insert_order进行止盈平仓时候的报单 """
         pass
 
-    def insert_order4force_close(self, trade_memo: str) -> None:
+    def insert_order_4_force_close(self, trade_memo: str) -> None:
+        """
+        使用锁仓方式进行强平，目的是只要回合完成就可以
+        """
         if self.tick_now is None:
             return
 
-        self.insert_order(
-            self.const_flag_close_mode == self.const_close_round_mode,
-            self.pos < 0,
-            abs(int(self.pos)),
-            self.tick_now.ask_price_1 if self.pos < 0 else self.tick_now.bid_price_1,
-            trade_memo
-        )
+        if self.pos < 0:
+            self.insert_order(
+                Direction.LONG,
+                Offset.OPEN,
+                abs(int(self.pos)),
+                self.tick_now.last_price + self.get_pricetick() * self.get_price_coefficient_4_force_close(),
+                trade_memo
+            )
+        else:
+            self.insert_order(
+                Direction.SHORT,
+                Offset.OPEN,
+                self.pos,
+                self.tick_now.last_price - self.get_pricetick() * self.get_price_coefficient_4_force_close(),
+                trade_memo
+            )
 
-    def force_close4normal(self) -> None:
-        """ 正常地强制平仓 """
-        if self.strategy_trade_state not in {
-            CtaTradeStat.SLEEPING,
-            CtaTradeStat.CLEANING_FIRST,
-            CtaTradeStat.CLEANING_CONFIRMED,
-        }:
-            self.write_log("量化程序转为休眠状态")
-            self.write_log("量化程序开始强制平仓")
-            self.strategy_trade_state = CtaTradeStat.SLEEPING
-
+    def force_close_4_normal(self) -> None:
+        """ 强制平仓 """
         self.cancel_all()
 
-        if self.pos != 0 and self.tick_now is not None:
-            self.insert_order4force_close(trade_memo="force close when close")
-        elif self.strategy_trade_state == CtaTradeStat.CLEANING_FIRST:
-            self.strategy_trade_state = CtaTradeStat.CLEANING_CONFIRMED
-            self.write_log("再次校验强制平仓时已无多余持仓")
-        else:
-            self.strategy_trade_state = CtaTradeStat.CLEANING_FIRST
-            self.write_log("初次校验强制平仓时已无多余持仓")
+        while self.pos != 0:
+            self.insert_order_4_force_close(trade_memo="强制平仓")
+
+            sleep(1)
+            self.cancel_all()
+
+        self.write_log(f"初次校验强制平仓时已无多余持仓")
+
+    @abstractmethod
+    def reset_round_variable(self) -> None:
+        """ 重置单个回合的临时变量 """
+        pass
 
     @abstractmethod
     def reset_tmp_variable(self) -> None:
-        """ 重置跨交易日的相关参数的状态"""
+        """ 重置跨交易日的相关参数的状态 """
         pass
 
-    def is_sleep_time(self) -> bool:
-        """ 判断是否需要休眠
-        """
-        # TODO Jason Han：需要根据不同的合约区别收盘时间
+    def set_relax_tick_num(self, tick_num: int) -> None:
+        self.relax_tick_num = tick_num
+
+    def is_closing_time(self) -> bool:
+        """ 判断是否需要休眠 """
+        # TODO Jason Han：需要根据不同的合约区别收盘时间。现阶段暂时就按照这个固定的来
         if self.tick_now is None:
             return False
 
@@ -615,195 +690,208 @@ class XinQiCtaTemplate(CtaTemplate):
         )
 
     def insert_order(
-        self,
-        is_lock: bool,
-        is_long: bool,
-        volume: int,
-        price: float,
-        trade_memo: str,
+            self,
+            direction: Direction,
+            offset: Offset,
+            volume: int,
+            price: float,
+            trade_memo: str,
     ) -> None:
-        _ = trade_memo
-
-        if is_lock:
-            if is_long:
-                self.buy(price, volume, lock=True, memo=trade_memo)
-            else:
-                self.cover(price, volume, lock=True, memo=trade_memo)
+        self.write_log(f"进行报单操作，方向：{direction} 开平：{offset} "
+                       f"手数：{volume} 价格：{price} 交易备注：{trade_memo}")
+        if direction == Direction.LONG and offset == Offset.OPEN:
+            self.buy(price, volume, lock=True, memo=trade_memo)
+        elif direction == Direction.SHORT and offset == Offset.OPEN:
+            self.short(price, volume, lock=True, memo=trade_memo)
+        elif direction == Direction.SHORT and offset == Offset.CLOSE:
+            self.sell(price, volume, lock=True, memo=trade_memo)
+        elif direction == Direction.LONG and offset == Offset.CLOSE:
+            self.cover(price, volume, lock=True, memo=trade_memo)
         else:
-            if is_long:
-                self.buy(price, volume, net=True, memo=trade_memo)
-            else:
-                self.cover(price, volume, net=True, memo=trade_memo)
+            raise ValueError(f"unsupported order action: {direction=} {offset=}")
 
+    def get_price_coefficient_4_force_close(self) -> int:
+        return self.price_coefficient_4_force_close
 
-class XinQiCtaTemplateBar(CtaTemplate):
-    author: str = "Xin Qi Technical Corporation"
-    const_flag_close_mode: str = "lock"
-    const_close_round_mode: str = "lock"
-    const_price_tick: float = 0
-    parameters: list = [
-        "const_close_round_mode",
-        "const_price_tick",
-    ]
-
-    no_trade_tick_num: int = 0
-    is_insert_order: bool = False
-    order_open_price: float = 0
-    strategy_trade_memo: str = ""
-    trade_direction: int = 0
-    variables: list = [
-        "is_insert_order",
-        "order_open_price",
-        "strategy_trade_memo",
-        "trade_direction",
-    ]
-
-    def __init__(
-        self,
-        cta_engine: Any,
-        strategy_name: str,
-        vt_symbol: str,
-        setting: dict,
-    ) -> None:
-        super().__init__(cta_engine, strategy_name, vt_symbol, setting)
-
-        self.bg: BarGenerator = BarGenerator(self.on_bar)
-        self.tick_now: TickData | None = None
-        self.bar_now: BarData | None = None
-
-    def on_init(self) -> None:
-        self.write_log("策略初始化")
-        self.reset_tmp_variable()
-        self.on_xq_init()
-
-    @abstractmethod
-    def on_xq_init(self) -> None:
-        pass
-
-    def on_start(self) -> None:
-        self.is_insert_order = False
-        self.write_log("策略启动")
-
-        self.const_price_tick = self.get_pricetick()
-        self.on_xq_start()
-
-    @abstractmethod
-    def on_xq_start(self) -> None:
-        pass
-
-    def on_stop(self) -> None:
-        self.write_log("策略停止")
-        self.on_xq_stop()
-
-    @abstractmethod
-    def on_xq_stop(self) -> None:
-        pass
-
-    def on_tick(self, tick: TickData) -> None:
-        self.tick_now = tick
-
-        if self.is_insert_order:
-            if self.no_trade_tick_num > 0:
-                self.no_trade_tick_num -= 1
-            else:
-                self.cancel_all()
-
-        if self.is_relax(tick):
-            return
-
-        self.bg.update_tick(tick)
-        self.build_tick_parameter(tick)
-
-    @abstractmethod
-    def build_tick_parameter(self, tick: TickData) -> None:
-        pass
-
-    def on_bar(self, bar: BarData) -> None:
-        self.bg.update_bar(bar)
-        self.bar_now = bar
-        self.build_bar_parameter(bar)
-
-    @abstractmethod
-    def build_bar_parameter(self, bar: BarData) -> None:
-        pass
-
-    def on_order(self, order: OrderData) -> None:
-        if order.status in {Status.CANCELLED, Status.REJECTED}:
-            self.is_insert_order = False
-
-        self.build_order_parameter(order)
-
-    @abstractmethod
-    def build_order_parameter(self, order: OrderData) -> None:
-        pass
-
-    def on_trade(self, trade: TradeData) -> None:
-        if self.is_insert_order:
-            self.is_insert_order = False
-
-        self.order_open_price = trade.price
-        self.build_trade_parameter(trade)
-
-    @abstractmethod
-    def build_trade_parameter(self, trade: TradeData) -> None:
-        pass
+    def set_price_coefficient_4_force_close(self, new_price_coefficient) -> None:
+        self.price_coefficient_4_force_close = new_price_coefficient
 
     @staticmethod
-    def put_array_manager(am: ArrayManager, bar: BarData) -> bool:
-        am.update_bar(bar)
-        return am.inited
+    def get_trade_day(tick: TickData) -> str:
+        trade_day: Any = getattr(tick, "tradDay", "")
+        if trade_day:
+            return str(trade_day)
+        return tick.datetime.date().isoformat()
 
-    def xq_buy(self, price: float, volume: float, memo: str) -> None:
-        self.strategy_trade_memo = memo
 
-        if not self.is_insert_order and self.trading:
-            self.is_insert_order = True
-            if self.is_close_mode(self.const_close_round_mode):
-                self.buy(price, volume, lock=True, memo=memo)
-            else:
-                self.buy(price, volume, net=True, memo=memo)
-
-    def xq_short(self, price: float, volume: float, memo: str) -> None:
-        self.strategy_trade_memo = memo
-
-        if not self.is_insert_order and self.trading:
-            self.is_insert_order = True
-            if self.is_close_mode(self.const_close_round_mode):
-                self.short(price, volume, lock=True, memo=memo)
-            else:
-                self.short(price, volume, net=True, memo=memo)
-
-    def xq_sell(self, price: float, volume: float, memo: str) -> None:
-        self.strategy_trade_memo = memo
-
-        if not self.is_insert_order and self.trading:
-            self.is_insert_order = True
-            if self.is_close_mode(self.const_close_round_mode):
-                self.sell(price, volume, lock=True, memo=memo)
-            else:
-                self.sell(price, volume, net=True, memo=memo)
-
-    def xq_cover(self, price: float, volume: float, memo: str) -> None:
-        self.strategy_trade_memo = memo
-
-        if not self.is_insert_order and self.trading:
-            self.is_insert_order = True
-            if self.is_close_mode(self.const_close_round_mode):
-                self.cover(price, volume, lock=True, memo=memo)
-            else:
-                self.cover(price, volume, net=True, memo=memo)
-
-    @staticmethod
-    def is_close_mode(round_mode: str) -> bool:
-        return XinQiCtaTemplateBar.const_flag_close_mode == round_mode
-
-    @abstractmethod
-    def reset_tmp_variable(self) -> None:
-        pass
-
-    @staticmethod
-    def is_relax(tick: TickData) -> bool:
-        return 3 < tick.datetime.hour < 9 or 15 <= tick.datetime.hour < 21
+# class XinQiCtaTemplateBar(CtaTemplate):
+#     author: str = "Xin Qi Technical Corporation"
+#     const_flag_close_mode: str = "lock"
+#     const_close_round_mode: str = "lock"
+#     const_price_tick: float = 0
+#     parameters: list = [
+#         "const_close_round_mode",
+#         "const_price_tick",
+#     ]
+#
+#     no_trade_tick_num: int = 0
+#     is_insert_order: bool = False
+#     order_open_price: float = 0
+#     strategy_trade_memo: str = ""
+#     trade_direction: int = 0
+#     variables: list = [
+#         "is_insert_order",
+#         "order_open_price",
+#         "strategy_trade_memo",
+#         "trade_direction",
+#     ]
+#
+#     def __init__(
+#         self,
+#         cta_engine: Any,
+#         strategy_name: str,
+#         vt_symbol: str,
+#         setting: dict,
+#     ) -> None:
+#         super().__init__(cta_engine, strategy_name, vt_symbol, setting)
+#
+#         self.bg: BarGenerator = BarGenerator(self.on_bar)
+#         self.tick_now: TickData | None = None
+#         self.bar_now: BarData | None = None
+#
+#     def on_init(self) -> None:
+#         self.write_log("策略初始化")
+#         self.reset_tmp_variable()
+#         self.on_xq_init()
+#
+#     @abstractmethod
+#     def on_xq_init(self) -> None:
+#         pass
+#
+#     def on_start(self) -> None:
+#         self.is_insert_order = False
+#         self.write_log("策略启动")
+#
+#         self.const_price_tick = self.get_pricetick()
+#         self.on_xq_start()
+#
+#     @abstractmethod
+#     def on_xq_start(self) -> None:
+#         pass
+#
+#     def on_stop(self) -> None:
+#         self.write_log("策略停止")
+#         self.on_xq_stop()
+#
+#     @abstractmethod
+#     def on_xq_stop(self) -> None:
+#         pass
+#
+#     def on_tick(self, tick: TickData) -> None:
+#         self.tick_now = tick
+#
+#         if self.is_insert_order:
+#             if self.no_trade_tick_num > 0:
+#                 self.no_trade_tick_num -= 1
+#             else:
+#                 self.cancel_all()
+#
+#         if self.is_relax(tick):
+#             return
+#
+#         self.bg.update_tick(tick)
+#         self.build_tick_parameter(tick)
+#
+#     @abstractmethod
+#     def build_tick_parameter(self, tick: TickData) -> None:
+#         pass
+#
+#     def on_bar(self, bar: BarData) -> None:
+#         self.bg.update_bar(bar)
+#         self.bar_now = bar
+#         self.build_bar_parameter(bar)
+#
+#     @abstractmethod
+#     def build_bar_parameter(self, bar: BarData) -> None:
+#         pass
+#
+#     def on_order(self, order: OrderData) -> None:
+#         if order.status in {Status.CANCELLED, Status.REJECTED}:
+#             self.is_insert_order = False
+#
+#         self.build_order_parameter(order)
+#
+#     @abstractmethod
+#     def build_order_parameter(self, order: OrderData) -> None:
+#         pass
+#
+#     def on_trade(self, trade: TradeData) -> None:
+#         if self.is_insert_order:
+#             self.is_insert_order = False
+#
+#         self.order_open_price = trade.price
+#         self.build_trade_parameter(trade)
+#
+#     @abstractmethod
+#     def build_trade_parameter(self, trade: TradeData) -> None:
+#         pass
+#
+#     @staticmethod
+#     def put_array_manager(am: ArrayManager, bar: BarData) -> bool:
+#         am.update_bar(bar)
+#         return am.inited
+#
+#     def xq_buy(self, price: float, volume: float, memo: str) -> None:
+#         self.strategy_trade_memo = memo
+#
+#         if not self.is_insert_order and self.trading:
+#             self.is_insert_order = True
+#             if self.is_close_mode(self.const_close_round_mode):
+#                 self.buy(price, volume, lock=True, memo=memo)
+#             else:
+#                 self.buy(price, volume, net=True, memo=memo)
+#
+#     def xq_short(self, price: float, volume: float, memo: str) -> None:
+#         self.strategy_trade_memo = memo
+#
+#         if not self.is_insert_order and self.trading:
+#             self.is_insert_order = True
+#             if self.is_close_mode(self.const_close_round_mode):
+#                 self.short(price, volume, lock=True, memo=memo)
+#             else:
+#                 self.short(price, volume, net=True, memo=memo)
+#
+#     def xq_sell(self, price: float, volume: float, memo: str) -> None:
+#         self.strategy_trade_memo = memo
+#
+#         if not self.is_insert_order and self.trading:
+#             self.is_insert_order = True
+#             if self.is_close_mode(self.const_close_round_mode):
+#                 self.sell(price, volume, lock=True, memo=memo)
+#             else:
+#                 self.sell(price, volume, net=True, memo=memo)
+#
+#     def xq_cover(self, price: float, volume: float, memo: str) -> None:
+#         self.strategy_trade_memo = memo
+#
+#         if not self.is_insert_order and self.trading:
+#             self.is_insert_order = True
+#             if self.is_close_mode(self.const_close_round_mode):
+#                 self.cover(price, volume, lock=True, memo=memo)
+#             else:
+#                 self.cover(price, volume, net=True, memo=memo)
+#
+#     @staticmethod
+#     def is_close_mode(round_mode: str) -> bool:
+#         return XinQiCtaTemplateBar.const_flag_close_mode == round_mode
+#
+#     @abstractmethod
+#     def reset_tmp_variable(self) -> None:
+#         pass
+#
+#     @staticmethod
+#     def is_relax(tick: TickData) -> bool:
+#         return 3 < tick.datetime.hour < 9 or 15 <= tick.datetime.hour < 21
 
 
 class CtaSignal(ABC):
