@@ -33,7 +33,6 @@ from .engine import CtaEngine
 from .template import (
     CtaTemplate,
     XinQiCtaTemplate,
-    XinQiCtaTemplateBar,
     CtaSignal,
     TargetPosTemplate,
 )
@@ -44,7 +43,6 @@ __all__ = [
     "CtaEngine",
     "CtaTemplate",
     "XinQiCtaTemplate",
-    "XinQiCtaTemplateBar",
     "CtaSignal",
     "TargetPosTemplate",
     "StopOrder",
